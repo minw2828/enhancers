@@ -1,0 +1,47 @@
+#!/bin/bash
+
+# Description:
+# Run the same script per file or per record in parallel.
+# Min Wang, April 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.enrichment.scr [script_name] [parallel_index]
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task="TFBS"
+parallel_index=$2
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'H3K27Ac' 'H3K4me3' 'tender' 'tough')
+elens=(10000 30000)
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1=$1
+prog_path1=$runpath
+
+#################### analysis ####################
+# parallel_index: 1
+function db { for c in ${dbs[@]}; do qsub -v db=$c $prog_path1/$prog_file1; done }
+
+# parallel_index: 2
+function elen { for c in ${elens[@]}; do qsub -v elen=$c $prog_path1/$prog_file1; done }
+
+if   [ $parallel_index -eq 01 ]; then db
+elif [ $parallel_index -eq 02 ]; then elen
+fi
+
+
+exit 0
+

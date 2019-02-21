@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# Description:
+# This script performs GSEA on meta-analysis results.
+# Min Wang, Jan 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N metaAnalysis.GSEA.compareESnpRanking.H3K4me3_H2K27ac
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=03G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task='GSEA'
+phenos=('FY' 'MY' 'PY')
+tag1='enhancer';  tag2='snp';  tag3='gene'
+pSigLvl1='10e-08'
+pSigLvl2='10e-04'
+Width=2400
+Heigth=960
+nc=2
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="metaAnalysis.GSEA.compareLesESnpPvalue.H3K4me3_H2K27ac.ratio.R"
+prog_file2="metaAnalysis.GSEA.compareLesESnpPvalue.H3K4me3_H2K27ac.plot.R"
+
+#################### inputs ####################
+#infile1="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.H3K4me3.$projdate.$psf.tab"
+#inpath1="$outpath/metaAnalysis.GSEA/$pheno/H3K4me3"
+
+#infile2="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.Villar_2015.$projdate.c.tab"
+#inpath2="$path_pre/analyses/$projdate/c/out/$task/metaAnalysis.GSEA/$pheno/Villar_2015"
+
+#################### tmpfiles ####################
+tmpfile="lesESnpName_pheno_db_pmeta_minusLog10Pmeta.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="pheno_db_nLesESnp_nSigLesESnp_ratio_answer.$pSigLvl1.$projdate.$psf.csv"
+#outfile1="pheno_db_nLesESnp_nSigLesESnp_ratio_answer.$pSigLvl2.$projdate.$psf.csv"
+outfile2="`echo $prog_file1 | sed 's/\.R//g'`.$pSigLvl1.$pSigLvl2.$Width.$Heigth.$nc.$projdate.$psf.png"
+
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile {
+    remove_file $NODEDIR/$tmpfile
+    for pheno in ${phenos[@]}; do
+        infile1="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.H3K4me3.$projdate.$psf.tab"
+        inpath1="$outpath/metaAnalysis.GSEA/$pheno/H3K4me3"
+        infile2="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.Villar_2015.$projdate.c.tab"
+        inpath2="$path_pre/analyses/$projdate/c/out/$task/metaAnalysis.GSEA/$pheno/Villar_2015"
+        awk -F'\t' -v p=$pheno 'BEGIN{OFS=",";} {print $2, p, "H3K4me3", $6, $7}' $inpath1/$infile1 >> $NODEDIR/$tmpfile
+        awk -F'\t' -v p=$pheno 'BEGIN{OFS=",";} {print $2, p, "H3K27Ac", $6, $7}' $inpath2/$infile2 >> $NODEDIR/$tmpfile
+    done 
+}
+
+#getTmpfile
+#Rscript $binpath/$prog_file1 $NODEDIR/$tmpfile $outpath1/$outfile1 
+Rscript $binpath/$prog_file2 $NODEDIR/$tmpfile $outpath1/$outfile2 
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:             $PBS_JOBNAME"
+echo "PBS_JOBID:               $PBS_JOBID"
+echo "Output directory:        $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+

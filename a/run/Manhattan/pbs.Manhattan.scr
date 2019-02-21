@@ -1,0 +1,101 @@
+#!/bin/bash
+
+# Description:
+# Run the same script per file or per record in parallel.
+# Min Wang, March 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N Manhattan
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=400G
+#PBS -l walltime=10:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task='GWAS'
+stask='Manhattan'
+tag1='enhancer'; tag2='snp'; tag3='gene'
+base=10
+plot_width=4800
+plot_height=960
+gender='bull'
+pheno="FY"
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task/$stask"; runpath="$path_analyse/run/$task/$stask"; outpath="$path_analyse/out/$task/$stask"
+
+#################### program files ####################
+prog_file1="$stask.R"
+prog_path1=$binpath
+
+#################### inputs ####################
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+#infile2="chrom$chrN.ps"
+#inpath2="$outpath/$gender/$pheno/$chrN"
+
+#################### tmpfiles ####################
+tmpfile="chr_pos_effect_pvalue.$gender.$pheno.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="`echo $prog_file1 | awk -F'.' '{print $1}'`.10.$gender.$pheno.$projdate.$psf.png"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+targets=($NODEDIR/$tmpfile)
+for i in ${targets[@]}; do remove_file $i; done
+
+#################### analysis ####################
+function mergeAll {
+    remove_file $NODEDIR/$tmpfile
+    for chrN in `cat $inpath1/$infile1`; do 
+        infile2="chrom$chrN.ps"
+        inpath2="$outpath/$gender/$pheno/$chrN"
+        awk -F'\t' 'BEGIN{OFS="\t";} {print $1, $2, $3}' $inpath2/$infile2 | sed 's/Chr//g' | sed 's/:/\t/g' >> $NODEDIR/$tmpfile
+    done 
+}
+
+mergeAll
+Rscript $prog_path1/$prog_file1 $NODEDIR/$tmpfile $outpath/$outfile1
+
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:         $PBS_JOBNAME"
+echo "PBS_JOBID:           $PBS_JOBID"
+echo "Output directory:    $outpath"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+
+

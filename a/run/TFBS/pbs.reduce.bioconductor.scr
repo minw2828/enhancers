@@ -1,0 +1,176 @@
+#!/bin/bash
+
+# Description:
+# This script gets a non-overlapping set of bovine putative enhancer genomic 
+# intervals, using bioconductor
+# Min Wang, 07 April 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+#       max memory used = 4.2GB
+#       walltime        = 00:10:03
+#       total CPU time  = 00:01:59
+#       qsub -v db=VISTA /group/dairy/Min/geno2pheno/analyses/2016-01-19/a/run/TFBS/pbs.reduce.bioconductor.scr
+#
+#       max memory used = 4.7GB
+#       walltime        = 00:12:45
+#       total CPU time  = 00:04:41
+#       qsub -v db=FANTOM5 /group/dairy/Min/geno2pheno/analyses/2016-01-19/a/run/TFBS/pbs.reduce.bioconductor.scr
+#
+#       max memory used = 6.1GB
+#       walltime        = 00:11:31
+#       total CPU time  = 00:03:26
+#       qsub -v db=dbSUPER /group/dairy/Min/geno2pheno/analyses/2016-01-19/a/run/TFBS/pbs.reduce.bioconductor.scr
+#
+#       max memory used = 4.7GB
+#       walltime        = 00:10:05
+#       total CPU time  = 00:02:01
+#       qsub -v db=H3K27Ac /group/dairy/Min/geno2pheno/analyses/2016-01-19/a/run/TFBS/pbs.reduce.bioconductor.scr
+#
+#       max memory used = 4.3GB
+#       walltime        = 00:10:21
+#       total CPU time  = 00:02:16
+#       qsub -v db=H3K4me3 /group/dairy/Min/geno2pheno/analyses/2016-01-19/a/run/TFBS/pbs.reduce.bioconductor.scr
+#
+#       max memory used = 4.3GB
+#       walltime        = 00:10:12
+#       total CPU time  = 00:02:08
+#       qsub -v db=tender /group/dairy/Min/geno2pheno/analyses/2016-01-19/a/run/TFBS/pbs.reduce.bioconductor.scr
+#
+#       max memory used = 3.5GB
+#       walltime        = 00:09:37
+#       total CPU time  = 00:01:34
+#       qsub -v db=tough /group/dairy/Min/geno2pheno/analyses/2016-01-19/a/run/TFBS/pbs.reduce.bioconductor.scr
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N reduce.bioconductor
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=10G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate='2016-01-19'
+psf='a' # project sub-folder
+task='TFBS'
+oRefgen='bostau6'
+folder='GCF_000003055.6_Bos_taurus_UMD_3.1.1'
+evalue='4e-17'
+#db='tender'
+
+########## Define paths ##########
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="reduce.bioconductor.R"
+prog_path2=$binpath
+
+############ inputs ############
+infile1="output.table_stats.csv"
+inpath1="$path_pre/analyses/2015-11-24/c/out/report/$folder/$evalue"
+
+infile2="output.table_stats.csv"
+inpath2="$path_pre/analyses/2015-10-27/j/out/report/$folder/$evalue"
+
+infile3="output.table_stats.csv"
+inpath3="$path_pre/analyses/2015-10-28/d/out/report/$folder/$evalue"
+
+infile4="bosTau-"$db"_replicated-peaks_macs"
+inpath4="$path_data/Villar2015"
+
+infile6="GSM1517452_Bovine_H3K4me3_"$db"_index3.sorted-W200-G400-E100.bed.gz"
+inpath6="$path_data/Zhao2015"
+
+infile7="GSM1517453_Bovine_H3K4me3_"$db"_index5.sorted-W200-G400-E100.bed.gz"
+inpath7="$path_data/Zhao2015"
+
+infilepattern8="BosTau6.over.chain.bed"
+inpath8="$path_pre/analyses/2016-02-29/a/out/liftOver"
+
+infile9="MAP_SEQRUN4_4COPIES.txt"
+inpath9="/group/dairy/allimputed17112014/fimputeResults/dose"   # BH's 1000 Bull Genome Run4 Imputed
+
+########## tmpfiles ##########
+tmpfile1="chr_start_end.$db.$projdate.$psf.csv"
+tmpfile9="snpName_chr_start_end.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+############ outputs ############
+outfile1="chr_start_end.$db.$oRefgen.$projdate.$psf.csv"
+outfile2="snpName.$db.$oRefgen.$projdate.$psf.csv"
+outpath1="$outpath/`echo $prog_file2 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+##################### analysis #####################
+function getTmpfile1 {
+    if [[ $db == 'VISTA' ]]; then 
+        tail -n +2 $inpath1/$infile1 | awk -F, '{print $3, $(NF-3), $(NF-2)}' | awk -F' ' 'BEGIN{OFS=","} {print $7, $(NF-1), $NF}' | grep -v genomic | sed 's/^chr//g' | sed 's/^Chr//g' | sed 's/^30/X/g' > $NODEDIR/$tmpfile1
+        for infile4 in `ls -l $inpath8/*$infilepattern8 | grep -i $db | awk -F' ' '{print $NF}'`; do
+            awk -F'\t' 'BEGIN{OFS=","} {print $1, $2, $3}' $infile4 | grep -v genomic | sed 's/^chr//g' | sed 's/^Chr//g' | sed 's/^30/X/g' >> $NODEDIR/$tmpfile1
+        done
+    elif [[ $db == 'FANTOM5' ]]; then 
+        tail -n +2 $inpath2/$infile2 | awk -F, '{print $3, $(NF-3), $(NF-2)}' | awk -F' ' 'BEGIN{OFS=","} {print $7, $(NF-1), $NF}' | grep -v genomic | sed 's/^chr//g' | sed 's/^Chr//g' | sed 's/^30/X/g' > $NODEDIR/$tmpfile1
+        for infile4 in `ls -l $inpath8/*$infilepattern8 | grep -i $db | awk -F' ' '{print $NF}'`; do
+            awk -F'\t' 'BEGIN{OFS=","} {print $1, $2, $3}' $infile4 | grep -v genomic | sed 's/^chr//g' | sed 's/^Chr//g' | sed 's/^30/X/g' >> $NODEDIR/$tmpfile1
+        done
+    elif [[ $db == 'dbSUPER' ]]; then
+        tail -n +2 $inpath3/$infile3 | awk -F, '{print $3, $(NF-3), $(NF-2)}' | awk -F' ' 'BEGIN{OFS=","} {print $7, $(NF-1), $NF}' | grep -v genomic | sed 's/^chr//g' | sed 's/^Chr//g' | sed 's/^30/X/g' > $NODEDIR/$tmpfile1
+        for infile4 in `ls -l $inpath8/*$infilepattern8 | grep -i $db | awk -F' ' '{print $NF}'`; do
+            awk -F'\t' 'BEGIN{OFS=","} {print $1, $2, $3}' $infile4 | grep -v genomic | sed 's/^chr//g' | sed 's/^Chr//g' | sed 's/^30/X/g' >> $NODEDIR/$tmpfile1
+        done
+    elif [[ $db == 'H3K27Ac' ]] || [[ $db == 'H3K4me3' ]]; then
+        tail -n +2 $inpath4/$infile4 | awk -F'\t' 'BEGIN{OFS=","} {print $1, $2, $3}' | grep -v genomic | sed 's/^chr//g' | sed 's/^Chr//g' | sed 's/^30/X/g' > $NODEDIR/$tmpfile1
+    elif [[ $db == 'tender' ]]; then
+        zcat -c $inpath6/$infile6 | awk -F'\t' 'BEGIN{OFS=","} {print $1, $2, $3}' | grep -v genomic | sed 's/^chr//g' | sed 's/^Chr//g' | sed 's/^30/X/g' > $NODEDIR/$tmpfile1
+    elif [[ $db == 'tough' ]]; then
+        zcat -c $inpath7/$infile7 | awk -F'\t' 'BEGIN{OFS=","} {print $1, $2, $3}' | grep -v genomic | sed 's/^chr//g' | sed 's/^Chr//g' | sed 's/^30/X/g' > $NODEDIR/$tmpfile1
+    fi
+}
+
+function getTmpfile5 {
+    awk -F' ' 'BEGIN{OFS=","} {print $1, $3, $4, $4}' $inpath9/$infile9 | grep -v genomic | sed 's/,30,/,X,/g' > $NODEDIR/$tmpfile9
+}
+
+getTmpfile1 
+getTmpfile5
+$prog_path1/$prog_file1 $prog_path2/$prog_file2 $NODEDIR/$tmpfile1 $NODEDIR/$tmpfile9  $outpath1/$outfile1 $outpath1/$outfile2
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is   $NODEDIR"
+echo "Output Directory:                  $outpath1"
+echo ""
+
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

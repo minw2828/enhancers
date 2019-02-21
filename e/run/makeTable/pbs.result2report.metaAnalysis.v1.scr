@@ -1,0 +1,132 @@
+#!/bin/bash
+
+# Description:
+# On 14 September 2017, MG, AC, TPH and MW had a skype call to BH. MG raises 
+# a concern on the permutation test that MW performed on her first paper. 
+# MG's concern was that whether the enrichment signal from H3K4me3 regions 
+# was due to LD to mutation in gene, or true enrichment within H3K4me3 regions. 
+# To address the concern, MG proposes the following analyses that will be 
+# performed in this folder. 
+# 
+# This script makes a table according to MG's suggestions with the following 
+# columns: 
+# - Column 1: Gene name
+# - Column 2: ratio of the upstream that are covered by this histone mark
+# - Column 3: number of QTLs/eQTLs falling inside that histone mark 
+# - Column 4: number of QTLS/eQTLs falling outside that histone mark
+# 
+# The QTL/eQTL data that is being tested for enrichment is listed as function name.
+#
+# Note:
+# - It is nature to see one time of the following message:
+#     Warning message:
+#     NAs introduced by coercion
+# - This script requires the genes to encompass significant SNPs
+# 
+# Min Wang, 14 September 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [call_pheno]
+# qsub -v [script_name] 
+
+
+#PBS -S /bin/bash
+#PBS -N result2report.metaAnalysis.v1
+#PBS -l nodes=1:ppn=8
+#PBS -l mem=05G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='e'
+task='makeTable'
+ver='v1'
+oRefseq='bostau6'
+pSig='10e-08'
+phenos=('FY' 'MY' 'PY')
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'H3K4me3' 'H3K27Ac' 'tender' 'tough')
+pDis1='NA'    # a numeric value defines the promoter regions used in promoter() function. If NA, use default setting in upstream in the function: promoters(x, upstream=2000, downstream=200, ...)
+pDis2='NA'    # a numeric value defines the promoter regions used in promoter() function. If NA, use default setting in downstream in the function: promoters(x, upstream=2000, downstream=200, ...)
+cov1='10e-02'
+cov2='90e-02'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_refgen="$path_data/ref_genomes"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="metaAnalysis.$ver.R"
+prog_path2="$binpath"
+
+prog_file3="result2report.$prog_file2"
+prog_path3="$binpath"
+
+#################### inputs ####################
+infile1="geneId_geneName_ratioOfProInDb_nbQltInDb_nbQltOutDb.$pSig.$oRefseq.$projdate.$psf.csv"
+#inpath1="$outpath/`echo $prog_file2 | awk -F'.' '{print $2}'`/$ver/$pDis1/$pDis2/$pheno/$db"
+
+#################### tmpfiles ####################
+tmpfile1="geneId_geneName_ratioOfProInDb_nbQltInDb_nbQltOutDb_pheno_db.$pSig.$oRefseq.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outpath1="$outpath/"`echo $prog_file3 | awk -F'.' '{print $1}'`
+outpath2="$outpath1/"`echo $prog_file3 | awk -F'.' '{print $2}'`
+outpath3="$outpath2/$ver"
+outpath4="$outpath3/$pDis1"
+outpath5="$outpath4/$pDis2"
+
+outfile1="geneId_geneName_ratioOfProInDb_nbQltInDb_nbQltOutDb_pheno_db.$cov1.$cov2.$pSig.$oRefseq.$projdate.$psf.csv"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $NODEDIR $outpath1 $outpath2 $outpath3 $outpath4 $outpath5)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile1 {
+    remove_file $NODEDIR/$tmpfile1
+    for pheno in ${phenos[@]}; do
+        for db in ${dbs[@]}; do
+            inpath1="$outpath/`echo $prog_file2 | awk -F'.' '{print $2}'`/$ver/$pDis1/$pDis2/$pheno/$db"
+            awk -F',' -v p=$pheno -v d=$db 'BEGIN{OFS=",";} {print $0, p, d}' $inpath1/$infile1 >> $NODEDIR/$tmpfile1
+        done
+    done
+}
+
+getTmpfile1
+$prog_path1/$prog_file1 $prog_path3/$prog_file3 $NODEDIR/$tmpfile1 $outpath5/$outfile1
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                         $PBS_JOBNAME"
+echo "PBS_JOBID:                           $PBS_JOBID"
+echo "Temporary directory to create is:    $NODEDIR"
+echo "Output Directory:                    $outpath5"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

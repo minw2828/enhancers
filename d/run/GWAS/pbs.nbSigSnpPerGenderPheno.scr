@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# Description:
+# This script calculates the number of SNP per gender, phenotype cohort.
+# Min Wang, July 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# #fit your case.
+
+# Stats for job 2425447 run on comp042:
+#         max memory used = 17.5GB
+#         walltime        = 00:10:07
+#         total CPU time  = 00:09:41
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N nbSigSnpPerGenderPheno
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=20G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate="2016-01-19"
+psf='d' # project sub-folder
+task='GWAS'
+genders=('bull' 'cow')
+phenos=('FY' 'MY' 'PY')
+tag1='enhancer';  tag2='snp';  tag3='gene'
+pSigLevel='10e-08'
+
+########## Define paths ##########
+path_pre="/group/dairy/Min/geno2pheno"
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="nbSigSnpPerGenderPheno.R"
+prog_path1=$binpath
+
+########## inputs ##########
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+#infile2="chrom$chrN.ps"
+#inpath2="$outpath/$gender/$pheno/$chrN"              
+
+########## outputs ##########
+tmpfile="gender_pheno_chrN_snpName_effect_pvalue.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile1="gender_pheno_nbSigSnp_nbSnp_ratio_answer.$pSigLevel.$projdate.$psf.csv"  # Actual definition below
+outpath1="$outpath/`echo $prog_file1 | sed 's/.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+########## analysis ##########
+function getTmpfiles {
+    targets=($NODEDIR/$tmpfile)
+    for i in ${targets[@]}; do remove_file $i; done 
+    for gender in ${genders[@]}; do 
+        for pheno in ${phenos[@]}; do 
+            for chrN in `cat $inpath1/$infile1`; do 
+                infile2="chrom$chrN.ps"
+                inpath2="$outpath/$gender/$pheno/$chrN" 
+                awk -F'\t' -v gender=$gender -v pheno=$pheno -v chrN=$chrN 'BEGIN{OFS=",";} {print gender, pheno, chrN, $1, $2, $3}' $inpath2/$infile2 >> $NODEDIR/$tmpfile
+            done
+        done
+    done 
+}
+
+getTmpfiles
+
+Rscript $prog_path1/$prog_file1 $NODEDIR/$tmpfile $outpath1/$outfile1
+
+
+########## write to *.o* #file ##########
+echo    ""
+echo    "PBS_JOBNAME:  $PBS_JOBNAME"
+echo    "PBS_JOBID:    $PBS_JOBID"
+echo    "Target:       $outpath1/$outfile1"
+echo    ""
+
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

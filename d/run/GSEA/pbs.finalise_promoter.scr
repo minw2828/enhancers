@@ -1,0 +1,122 @@
+#!/bin/bash
+
+# Description:
+# Finalised putative promoters (Zhao2015) on the bovine genome.
+# Min Wang, November 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N finalise_promoter
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate='2016-01-19'
+psf='d' # project sub-folder
+task='GSEA'
+tag1='promoter';     tag2='snp'
+db='Zhao2015'
+folder='GCF_000003055.6_Bos_taurus_UMD_3.1.1'
+
+########## Define paths ##########
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="finalise_$tag1.DB.R"
+prog_path1=$binpath
+
+prog_file2="liftOver"
+prog_path2="$path_software/UCSC/liftover"
+
+########## inputs ##########
+infile1="GSM1517452_Bovine_H3K4me3_tender_index3.sorted-W200-G400-E100.bed.gz"
+infile2="GSM1517453_Bovine_H3K4me3_tough_index5.sorted-W200-G400-E100.bed.gz"
+inpath1="$path_data/$db"
+
+infile3="bosTau4ToBosTau6.over.chain.gz"
+inpath3="$path_data/ref_genomes/hgdownload.cse.ucsc.edu/goldenPath/`echo $infile3 | awk -F'To' '{print $1}'`/$prog_file2"
+
+infile4="bosTau6ToBosTau8.over.chain.gz"
+inpath4="$path_data/ref_genomes/hgdownload.cse.ucsc.edu/goldenPath/`echo $infile4 | awk -F'To' '{print $1}'`/$prog_file2"
+
+########## tmpfiles ##########
+tmpfile1="chr_start_end_db_chew.$db.`echo $infile1 | awk -F'_' '{print $4}'`.$projdate.$psf.bed"
+tmpfile2="chr_start_end_db_chew.$db.`echo $infile2 | awk -F'_' '{print $4}'`.$projdate.$psf.bed"
+tmpfile3="`echo $infile3 | sed 's/\.gz//g'`"
+tmpfile4="`echo $infile4 | sed 's/\.gz//g'`"
+NODEDIR=/tmp/$PBS_JOBID
+
+########## outputs ##########
+outfile1="chr_start_end_db_chew.$db.`echo $infile1 | awk -F'_' '{print $4}'`.$tag1.$projdate.$psf.bed"
+outfile2="chr_start_end_db_chew.$db.`echo $infile2 | awk -F'_' '{print $4}'`.$tag1.$projdate.$psf.bed"
+outfile31T="`echo $tmpfile1 | awk -F'.' 'BEGIN{OFS=".";} {print $1, $2, $3}'`.`echo $infile3 | awk -F'.' '{print $1}'`.$tag1.$projdate.$psf.bed"
+outfile31F="`echo $outfile31T | sed 's/bed/unmapped.bed/g'`"
+outfile41T="`echo $outfile31T | awk -F'.' 'BEGIN{OFS=".";} {print $1, $2, $3, $4}'`.`echo $infile4 | awk -F'.' '{print $1}'`.$tag1.$projdate.$psf.bed"
+outfile41F=`echo $outfile41T | sed 's/bed/unmapped.bed/g'`
+outfile32T="`echo $tmpfile2 | awk -F'.' 'BEGIN{OFS=".";} {print $1, $2, $3}'`.`echo $infile3 | awk -F'.' '{print $1}'`.$tag1.$projdate.$psf.bed"
+outfile32F=`echo $outfile32T | sed 's/bed/unmapped.bed/g'`
+outfile42T="`echo $outfile32T | awk -F'.' 'BEGIN{OFS=".";} {print $1, $2, $3, $4}'`.`echo $infile4 | awk -F'.' '{print $1}'`.$tag1.$projdate.$psf.bed"
+outfile42F=`echo $outfile42T | sed 's/bed/unmapped.bed/g'`
+outpath1="$outpath/$tag1"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+##################### analysis #####################
+function getTmpfile12 () {
+    c=`echo $1 | awk -F'_' '{print $4}'`
+    gunzip -c $1 | awk -F'\t' -v db=$db -v c=$c 'BEGIN{OFS="\t";} {print $1, $2, $3, db, c}' > $2
+}
+
+function getTmpfile34 () {
+    gunzip -c $1 > $2
+}
+
+#getTmpfile12 $inpath1/$infile1 $NODEDIR/$tmpfile1
+#getTmpfile12 $inpath1/$infile2 $NODEDIR/$tmpfile2
+#getTmpfile34 $inpath3/$infile3 $NODEDIR/$tmpfile3
+#getTmpfile34 $inpath4/$infile4 $NODEDIR/$tmpfile4
+#$prog_path2/$prog_file2 $NODEDIR/$tmpfile1 $NODEDIR/$tmpfile3 $outpath1/$outfile31T $outpath1/$outfile31F
+#$prog_path2/$prog_file2 $outpath1/$outfile31T $NODEDIR/$tmpfile4 $outpath1/$outfile41T $outpath1/$outfile41F
+#$prog_path2/$prog_file2 $NODEDIR/$tmpfile2 $NODEDIR/$tmpfile3 $outpath1/$outfile32T $outpath1/$outfile32F
+#$prog_path2/$prog_file2 $outpath1/$outfile32T $NODEDIR/$tmpfile4 $outpath1/$outfile42T $outpath1/$outfile42F
+
+Rscript $prog_path1/$prog_file1 $outpath1/$outfile41T $outpath1/$outfile1
+Rscript $prog_path1/$prog_file1 $outpath1/$outfile42T $outpath1/$outfile2
+
+
+########## write to *.o* #file ##########
+echo ""
+echo "PBS_JOBNAME:         $PBS_JOBNAME"
+echo "PBS_JOBID:           $PBS_JOBID"
+echo "Output directory:    $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

@@ -1,0 +1,73 @@
+#!/bin/bash
+
+## Description:
+## Here we showed how to pipeline in the current folder should be run.
+## Min Wang, Feb 2017
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='e'
+
+##################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin"; runpath="$path_analyse/run"; outpath="$path_analyse/out"
+
+
+################### 1st Batch to run ###################
+cd $runpath/makeTable
+sh call.parallel.scr pbs.metaAnalysis.v1.scr 03
+sh call.parallel.scr pbs.metaAnalysis.v2.scr 05
+sh call.parallel.scr pbs.metaAnalysis.v3.scr 06
+sh call.parallel.scr pbs.metaAnalysis.v4.scr 07
+sh call.parallel.scr pbs.metaAnalysis.v5.scr 07
+
+################### 2nd Batch to run ###################
+cd $runpath/makeTable
+qsub pbs.result2report.metaAnalysis.v1.scr
+
+cd $runpath/dotest
+sh call.parallel.scr pbs.Chisquare.v1.scr 05
+sh call.parallel.scr pbs.Ttest.v1.scr 05
+
+cd $runpath/dotest
+sh call.parallel.scr pbs.Chisquare.v2.scr 06
+sh call.parallel.scr pbs.Ttest.v2.scr 06
+
+cd $runpath/dotest
+sh call.parallel.scr pbs.Chisquare.v3.scr 11
+sh call.parallel.scr pbs.Ttest.v3.scr 11
+
+cd $runpath/dotest
+sh call.parallel.scr pbs.Chisquare.v4.scr 12
+sh call.parallel.scr pbs.Ttest.v4.scr 12
+
+cd $runpath/dotest
+sh call.parallel.scr pbs.Chisquare.v5.scr 12
+sh call.parallel.scr pbs.Ttest.v5.scr 12
+
+################### 3rd Batch to run ###################
+cd $runpath/dotest
+sh call.parallel.scr pbs.result2report.Chisquare.v1.scr 04
+sh call.parallel.scr pbs.result2report.Ttest.v1.scr 04
+
+cd $runpath/dotest
+sh call.parallel.scr pbs.result2report.Chisquare.v2.scr 10
+sh call.parallel.scr pbs.result2report.Ttest.v2.scr 10
+
+cd $runpath/dotest
+sh call.parallel.scr pbs.result2report.Chisquare.v3.scr 10
+sh call.parallel.scr pbs.result2report.Ttest.v3.scr 10
+
+cd $runpath/dotest
+sh call.parallel.scr pbs.result2report.Chisquare.v4.scr 10
+sh call.parallel.scr pbs.result2report.Ttest.v4.scr 10
+
+cd $runpath/dotest
+sh call.parallel.scr pbs.result2report.Chisquare.v5.scr 10
+sh call.parallel.scr pbs.result2report.Ttest.v5.scr 10
+
+

@@ -1,0 +1,80 @@
+#!/bin/bash
+
+# Description:
+# This script selects significant SNPs from removing DGAT1 meta-analysis results.
+# Min Wang, Augugst 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N sigSnp
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=10G
+#PBS -l walltime=02:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task="GWAS"
+tag1='enhancer';  tag2='snp';  tag3='gene'
+pSigLevel='10e-08'
+chrN=14
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="sigSnp.R"
+prog_path1=$binpath
+
+#################### inputs ####################
+infile1="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.$psf.tab"
+inpath1="$outpath/metaAnalysis.reengineerBHzScoref90.v2"
+
+#################### outputs ####################
+tmpfile=""
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile1="sigSnpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$pSigLevel.$chrN.$projdate.$psf.tab"
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+Rscript $prog_path1/$prog_file1 $inpath1/$infile1 $outpath1/$outfile1 
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is"  $NODEDIR
+echo "Target:                            $outpath1/$outfile1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

@@ -1,0 +1,96 @@
+#!/bin/bash
+
+# Description:
+# This script gets a non-overlapping set of bovine putative enhancer genomic 
+# intervals, using bioconductor
+# Min Wang, 07 April 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N getSnp.dbSUPERmerged
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=50G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate='2016-01-19'
+psf='a' # project sub-folder
+task='TFBS'
+oRefgen='bostau6'
+folder='GCF_000003055.6_Bos_taurus_UMD_3.1.1'
+evalue='4e-17'
+db='dbSUPER'
+#elen=10000
+
+########## Define paths ##########
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="getSnp.dbSUPERmerged.R"
+prog_path2=$binpath
+
+############ inputs ############
+infile1="chr_start_end.$db.$oRefgen.$projdate.$psf.csv"
+inpath1="$outpath/reduce.bioconductor"
+
+infile9="MAP_SEQRUN4_4COPIES.txt"
+inpath9="/group/dairy/allimputed17112014/fimputeResults/dose"   # BH's 1000 Bull Genome Run4 Imputed
+
+########## tmpfiles ##########
+tmpfile9="snpName_chr_start_end.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+############ outputs ############
+outfile1="snpName.$elen.$db.$oRefgen.$projdate.$psf.csv"
+outpath1="$outpath/`echo $prog_file2 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+##################### analysis #####################
+function getTmpfile5 {
+    awk -F' ' 'BEGIN{OFS=","} {print $1, $3, $4, $4}' $inpath9/$infile9 | grep -v genomic | sed 's/,30,/,X,/g' > $NODEDIR/$tmpfile9
+}
+
+getTmpfile5
+$prog_path1/$prog_file1 $prog_path2/$prog_file2 $inpath1/$infile1 $NODEDIR/$tmpfile9 $outpath1/$outfile1
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is   $NODEDIR"
+echo "Output Directory:                  $outpath1"
+echo ""
+
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

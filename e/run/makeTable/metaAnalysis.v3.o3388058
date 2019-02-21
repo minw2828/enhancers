@@ -1,0 +1,15 @@
+Read 0.0% of 23462193 rowsRead 11.6% of 23462193 rowsRead 13.0% of 23462193 rowsRead 19.7% of 23462193 rowsRead 31.1% of 23462193 rowsRead 36.9% of 23462193 rowsRead 43.0% of 23462193 rowsRead 52.5% of 23462193 rowsRead 61.8% of 23462193 rowsRead 66.1% of 23462193 rowsRead 75.9% of 23462193 rowsRead 87.6% of 23462193 rowsRead 89.7% of 23462193 rowsRead 98.0% of 23462193 rowsRead 23462193 rows and 4 (of 4) columns from 0.841 GB file in 00:00:18
+Read 14.5% of 3789833 rowsRead 38.5% of 3789833 rowsRead 69.1% of 3789833 rowsRead 92.9% of 3789833 rowsRead 3789833 rows and 8 (of 8) columns from 0.214 GB file in 00:00:07
+
+PBS_JOBNAME:                         metaAnalysis.v3
+PBS_JOBID:                           3388058.mgt.basc.science.depi.vic.gov.au
+Temporary directory to create is:    /tmp/3388058.mgt.basc.science.depi.vic.gov.au
+Output Directory:                    /group/dairy/Min/geno2pheno/analyses/2016-01-19/e/out/makeTable/metaAnalysis/v3/NA/NA/FY/CTCF
+
+
+Stats for job 3388058 run on comp109:
+	max memory used = 0.7GB
+	walltime        = 00:13:39
+	total CPU time  = 00:06:05
+Submitted using:
+	qsub -v pheno=FY,db=CTCF,pSigCTCF=10e-08,ms=80 /group/dairy/Min/geno2pheno/analyses/2016-01-19/e/run/makeTable/pbs.metaAnalysis.v3.scr

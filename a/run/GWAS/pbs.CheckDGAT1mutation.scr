@@ -1,0 +1,150 @@
+#!/bin/bash
+
+# Description:
+# This script check the following 4 items:
+# - if animal IDs are matched in all input files ##
+# - GWAS significance by examining DGAT1 pvalue/effects - It should be highly significant
+# - Linear Regression Model to test DGAT1 genotype effects on FY, MY, PY 
+# - if files input into EMMAX also have similar DGAT1 correlation with phenotypes 
+# Min Wang, January 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N CheckDGAT1mutation
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate="2016-01-19"
+psf='a' # project sub-folder
+task="GWAS"
+gender="bull"
+pheno="FY"
+tag="enhancer"
+chr_DGAT1="14"
+pos_DGAT1="1801116"
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### programs ####################
+prog_file1="CheckDGAT1mutation.R"
+prog_file2="linear_regression.R"
+
+#################### inputs ####################
+infile1="output.2015-12-15.b.txt"
+inpath1="$path_pre/analyses/2015-12-15/b/out"
+
+infile2="pheno_idInt_id_sex_FY_MY_PY_EDC_YoB_Breed.txt"
+inpath2="$path_data/phenotype/Iona_20160115"
+
+infile3="800K_597867_full_genos_orderPheno.grm.gz"
+inpath3="$path_data/genotype/Iona_20160120"
+
+infile4="800K_597867_full_genos_orderPheno.txt.gz"
+inpath4="$path_data/genotype/Iona_20160120"
+
+infile5="800KplusExtraNZ_597867overlap_Seq04.map"
+inpath5="$path_data/genotype/Iona_20160120"
+
+#################### tmpfiles ####################
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outpath1="$outpath/$gender"
+outpath2="$outpath1/$pheno"
+
+outfile1="$tag.pheno"
+outfile2="$tag.cov"
+outfile3="$tag.tfam"
+outfile4=$tag"_ids.txt"
+outfile5="$tag.geno"
+
+outfileD01=`echo $infile4 | sed 's/.gz//g'`
+outfileD02="rowIDs_genoDGAT1_phenos.tab"
+outfileD03="boxplot_errorBarplot.genoDGAT1_phenos.png"
+outfileD04="linearRegression.genoDGAT1_phenos.txt"
+outfileD02A="rowIDs_genoDGAT1_phenos.$gender.$pheno.tab"
+outfileD03A="rowIDs_genoDGAT1_phenos.$gender.$pheno.tab"
+outfileD04A="linearRegression.genoDGAT1_phenos.$gender.$pheno.txt"
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2)
+for i in ${targets[@]}; do make_dir $i; done
+
+if [ ! -s $outpath2/$outfileD01 ]; then gunzip -c $inpath4/$infile4 > $outpath2/$outfileD01; fi
+
+#################### analysis ####################
+## Q: check if animal IDs are matched in all input files ##
+target_files=($outpath2/$outfile1 $outpath2/$outfile2 $outpath2/$outfile3 $outpath2/$outfile4 $outpath2/$outfile5)
+for ifile in ${target_files[@]}; do
+    ofile="animal_ids.`echo $ifile | awk -F'/' '{print $NF}'`"
+    awk '{print $1}' $ifile > $outpath2/$ofile
+done
+
+for file1 in $outpath2/animal_ids.*; do 
+    for file2 in $outpath2/animal_ids.*; do
+        if ! cmp $file1 $file2 >/dev/null 2>&1; then 
+            echo "IDs in the following two files are not identical:" 
+            echo $file1 
+            echo $file2 
+        fi    
+    done
+done
+
+## Q: Check GWAS significance by examining DGAT1 pvalue/effects - It should be highly significant ##
+### IM's email 22 March 2016:
+### You should find a very large effect for the SNP on Chrom 14 @ 1801116 bp - near the causal mutation for DGAT1
+### (for Fat in particular, but even for milk and protein there is a strong effect). ###
+### Note: Results are written to $outfileD03
+## Q: Linear Regression Model to test DGAT1 genotype effects on FY, MY, PY #
+### Note: Results are written to $outfileD04
+echo "The number of columns in genotype file $inpath4/$infile4 is: `awk '{print NF; exit}' $outpath2/$outfileD01`" 
+echo "The number of rows in map file $inpath5/$infile5 is: `wc -l < $inpath5/$infile5`" 
+echo "The position of SNP targetting DGAT1 is: $chr_DGAT1':'$pos_DGAT1" 
+snpIndex_DGAT1=$((`grep -nr $chr_DGAT1":"$pos_DGAT1 $inpath5/$infile5 | awk -F':' '{print $1}'`+1))
+paste -d"\t" <(awk -v snpIndex_DGAT1=$snpIndex_DGAT1 'BEGIN{OFS="\t";} {print $1,$snpIndex_DGAT1}' $outpath2/$outfileD01) <(awk 'BEGIN{OFS="\t";} {print $4,$5,$6}' $inpath2/$infile2) > $outpath2/$outfileD02
+cns_infile=("phenoID" "DGAT1_geno" "FY" "MY" "PY")
+tmp=`for i in ${cns_infile[@]}; do printf "$i "; done`
+cns_in=`echo $tmp | sed 's/ $//g'`
+Rscript $binpath/$prog_file1 $projdate $psf $outpath2/$outfileD02 "${cns_in}" $outpath2/$outfileD03 $outpath2/$outfileD04
+
+## Q: Check if files input into EMMAX also have similar DGAT1 correlation with phenotypes ##
+echo "The number of columns in $outpath2/$outfile5 is: `awk '{print NF; exit}' $outpath2/$outfile5`"
+if [[ `awk '{print NF; exit}' $outpath2/$outfileD01` == `awk '{print NF; exit}' $outpath2/$outfile5` ]]; then printf "The following two files have identical number of columns:\n$outpath2/$outfileD01\n$outpath2/$outfile5\n"; fi
+paste -d"\t" <(awk -v snpIndex_DGAT1=$snpIndex_DGAT1 'BEGIN{OFS="\t";} {print $1,$snpIndex_DGAT1}' $outpath2/$outfile5) <(awk 'BEGIN{OFS="\t";} {print $3}' $outpath2/$outfile1) > $outpath2/$outfileD02A 
+cns_infile=("phenoID" "DGAT1_geno" $pheno)
+tmp=`for i in ${cns_infile[@]}; do printf "$i "; done`
+cns_in=`echo $tmp | sed 's/ $//g'`
+Rscript $binpath/$prog_file1 $projdate $psf $outpath2/$outfileD02A "${cns_in}" $outpath2/$outfileD03A $outpath2/$outfileD04A
+
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:  $PBS_JOBNAME"
+echo "PBS_JOBID:    $PBS_JOBID"
+echo "Target:       $outpath2"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+

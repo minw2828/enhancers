@@ -1,0 +1,129 @@
+#!/bin/bash
+
+# Description:
+# This script select enriched cases from GSEA.
+# Min Wang, July 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# #fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N metaAnalysis.GSEA.enriched
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=2G
+#PBS -l walltime=02:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate="2016-01-19"
+psf='c' # project sub-folder
+task='GSEA'
+phenos=('FY' 'MY' 'PY')
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'Villar_2015')
+tag1='enhancer';  tag2='snp';  tag3='gene'
+sigThreshold='10e-08'
+ntimes=10000
+pLowerNumber='10e-05'
+windowSize=1000
+shiftPos=1
+fdr='10e-03'
+nTrueThreshold=0 # $nTRUE > $nTrueThreshold in the case
+
+########## Define paths ##########
+path_pre="/group/dairy/Min/geno2pheno"
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="metaAnalysis.GSEA.enriched.R"
+prog_path1=$binpath
+
+########## inputs ##########
+#infile1="EsRank.$pheno.$db.$ntimes.$projdate.$psf.tab"                                                                                    # real definition below
+#infile2="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"    # ...
+#infile3="plot12.$pheno.$db.$ntimes.$projdate.$psf.png"                                                                                    # ...
+#infile4="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"    # ...
+#inpath1="$outpath/metaAnalysis.GSEA/$pheno/$db"                                                                                           # real definition be
+
+########## outputs ##########
+tmpfile=$task"allES.pheno_db_rankES_noSignRankES.sorted.$ntimes.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile1=$task"fdrES.pheno_db_rankES.sorted.$fdr.$ntimes.$nTrueThreshold.$projdate.$psf.csv"
+outfile2=$task"enriched.gender_pheno_chrN_db.$nTrueThreshold.$fdr.$ntimes.$projdate.$psf.csv"
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+########## analysis ##########
+## sort 12 cases by ES ##
+function getTmpfile {
+    for pheno in ${phenos[@]}; do
+        for db in ${dbs[@]}; do
+            infile1="EsRank.$pheno.$db.$ntimes.$projdate.$psf.tab"   
+            inpath1="$outpath/metaAnalysis.GSEA/$pheno/$db"
+            awk -v pheno=$pheno -v db=$db 'BEGIN{OFS=",";} {print pheno, db, $0, $0}' $inpath1/$infile1 | sed 's/<//2'
+        done
+    done | sort -t',' -g -k4 > $NODEDIR/$tmpfile
+}
+
+function copyPlotsOfEnrichedCohorts {
+    grep '<' $outpath1/$outfile1 > $outpath1/$outfile2
+    awk -F',' '{if($NF <= 0.001) print $0}' $outpath1/$outfile1 >> $outpath1/$outfile2
+    ## select to report ##
+    SAVEIFS=$IFS;
+    IFS=',';
+    while read line; do
+        set -- $line;
+        pheno=$1
+        db=$2
+        infile2="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"
+        inpath1="$outpath/metaAnalysis.GSEA/$pheno/$db"
+        nTRUE=`grep -i true $inpath1/$infile2`
+        if [ $nTRUE > $nTrueThreshold ]; then
+            infile3="plot12.$pheno.$db.$ntimes.$projdate.$psf.png"
+            infile4="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"
+            targets=($inpath1/$infile2 $inpath1/$infile3 $inpath1/$infile4)
+            for i in ${targets[@]}; do cp $i $outpath1/; done
+        fi
+    done < $outpath1/$outfile2
+    IFS=$SAVEIFS;
+}
+
+getTmpfile
+
+## select cases where ES > threshold ##
+Rscript $prog_path1/$prog_file1 $NODEDIR/$tmpfile $outpath1/$outfile1
+
+copyPlotsOfEnrichedCohorts
+
+########## write to *.o* #file ##########
+echo ""
+echo "PBS_JOBNAME:  $PBS_JOBNAME"
+echo "PBS_JOBID:    $PBS_JOBID"
+echo "Target:       $outpath1/$outfile1"
+echo ""
+
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 
+
+

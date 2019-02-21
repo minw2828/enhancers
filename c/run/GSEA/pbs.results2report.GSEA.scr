@@ -1,0 +1,128 @@
+#!/bin/bash
+
+# Description:
+# This script select/prepare results to put into report.
+# Min Wang, April 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# #fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N GSEA
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=5G
+#PBS -l walltime=05:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate="2016-01-19"
+psf='c' # project sub-folder
+task='GSEA'
+genders=('bull' 'cow')
+phenos=('FY' 'MY' 'PY')
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'Villar_2015')
+tag1='enhancer';  tag2='snp';  tag3='gene'
+sigThreshold='10e-08'
+ntimes=10000
+pLowerNumber='10e-05'
+windowSize=1000
+shiftPos=1
+fdr=0.01
+nTrueThreshold=0 # $nTRUE > $nTrueThreshold in the case
+
+########## Define paths ##########
+path_pre="/group/dairy/Min/geno2pheno"
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="$task.select2report.R"
+prog_path1=$binpath
+
+########## inputs ##########
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+#infileA01="NbSigSnpPerGenderPhenoDb.histogramXIntercept.$gender.$pheno.$db.$sigThreshold.$ntimes.$projdate.$psf.png"  # real definition is below 
+#infileA02="NbSigSnpPerGenderPhenoDb.rank.$gender.$pheno.$db.$sigThreshold.$ntimes.$projdate.$psf.tab"                 # ...
+#inpathA="$outpath/NbSigSnpPerGenderPhenoDb/$gender/$pheno/$db"                                                        # real definition is below 
+
+#infileB01="runningSum_LD.$gender.$pheno.$chrN.$db.$windowSize.$shiftPos.$projdate.$psf.png"  # real definition is below
+#inpathB="$outpath/$gender/$pheno/$chrN/$db"                                                  # real definition is below
+
+########## outputs ##########
+outfileA="NbSigSnpPerGenderPhenoDb.gender_pheno_db_rank.$projdate.$psf.csv"
+outpath1="$outpath/report"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($outpath1 $outpath2)
+for i in ${targets[@]}; do make_dir $i; done
+
+targets=($outpath1/$outpathA)
+for i in ${targets[@]}; do remove_file $i; done
+
+########## analysis ##########
+# Get A results #
+function getAresults {
+    ## sort 24 cases by rank ##
+    echo "Gender,Phenotype,Database,Rank" > $outpath1/$outfile1
+    for gender in ${genders[@]}; do
+        for pheno in ${phenos[@]}; do
+            for db in ${dbs[@]}; do
+                infileA01="NbSigSnpPerGenderPhenoDb.histogramXIntercept.$gender.$pheno.$db.$sigThreshold.$ntimes.$projdate.$psf.png"
+                infileA02="NbSigSnpPerGenderPhenoDb.rank.$gender.$pheno.$db.$sigThreshold.$ntimes.$projdate.$psf.tab"
+                inpathA="$outpath/NbSigSnpPerGenderPhenoDb/$gender/$pheno/$db"
+                cp $inpathA/$infileA01 $outpath1/
+                awk -v gender=$gender -v pheno=$pheno -v db=$db 'BEGIN{OFS=",";} {print gender, pheno, db, $0}' $inpathA/$infileA02 >> $outpath1/$outfileA
+            done 
+        done
+    done  
+}
+
+function getBresults {
+    for gender in ${genders[@]}; do
+        for pheno in ${phenos[@]}; do
+            for chrN in `cat $inpath1/$infile1`; do
+                for db in ${dbs[@]}; do
+                    infileB01="runningSum_LD.$gender.$pheno.$chrN.$db.$windowSize.$shiftPos.$projdate.$psf.png"
+                    inpathB="$outpath/$gender/$pheno/$chrN/$db"
+                    cp $inpathB/$infileB01 $outpath1/
+                done
+            done
+        done
+    done
+}
+
+# RUN #
+#getAresults
+#getBresults
+
+########## write to *.o* #file ##########
+echo    ""
+echo    "PBS_JOBNAME:  $PBS_JOBNAME"
+echo    "PBS_JOBID:    $PBS_JOBID"
+echo    ""
+
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 
+
+
+

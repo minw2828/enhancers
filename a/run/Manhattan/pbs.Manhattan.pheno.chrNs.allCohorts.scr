@@ -1,0 +1,104 @@
+#!/bin/bash
+
+# Description:
+# Run the same script per file or per record in parallel.
+# Min Wang, July 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Stats for job 2431137 run on comp048:
+#         max memory used = 2.5GB
+#         walltime        = 00:03:29
+#         total CPU time  = 00:03:24
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N Manhattan
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=05G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task='GWAS'
+tag1='enhancer'; tag2='snp'; tag3='gene'
+logBase=10
+nc=2 # the first column is for annotating subplot index 
+subPlotIndex='b'
+genders=('bull' 'cow')
+pheno='PY'
+chrNs=(05 14 20)
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Manhattan.pheno.chrNs.allCohorts.R"
+prog_path1=$binpath
+
+#################### inputs ####################
+#infile2="chrom$chrN.ps"
+#inpath2="$outpath/$gender/$pheno/$chrN"
+
+#################### outputs ####################
+tmpfile2="gender_pheno_chr_pos_effect_pvalue.$pheno.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile1="output.$pheno.${chrNs[0]}_${chrNs[1]}_${chrNs[2]}.$logBase.$nc.$subPlotIndex.$projdate.$psf.png"
+outpath1="$outpath/`echo $prog_file1 | sed 's/.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+#################### analysis ####################
+function getTmpfiles {
+    targets=($NODEDIR/$tmpfile2)
+    for i in ${targets[@]}; do remove_file $i; done
+    for gender in ${genders[@]}; do
+        for chrN in ${chrNs[@]}; do
+            infile2="chrom$chrN.ps"
+            inpath2="$outpath/$gender/$pheno/$chrN"
+            awk -F'\t' -v gender=$gender -v pheno=$pheno 'BEGIN{OFS="\t";} {print gender, pheno, $1, $2, $3}' $inpath2/$infile2 | sed 's/Chr//g' | sed 's/:/\t/g' >> $NODEDIR/$tmpfile2
+        done
+    done 
+}
+
+getTmpfiles
+
+Rscript $prog_path1/$prog_file1 $NODEDIR/$tmpfile2 $outpath1/$outfile1
+
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:  $PBS_JOBNAME"
+echo "PBS_JOBID:    $PBS_JOBID"
+echo "Target:       $outpath1/$outfile1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+
+

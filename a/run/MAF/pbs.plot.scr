@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# Description:
+# Min Wang, January 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N MAF_plot
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=20G
+#PBS -l walltime=05:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task='GWAS'
+stask='MAF'
+tag1='enhancer';    tag2='snp'
+#breed='hol'
+#db='noDB'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task/$stask"; runpath="$path_analyse/run/$task/$stask"; outpath="$path_analyse/out/$task/$stask"
+
+#################### program files ####################
+prog_file1="filtercolumns.jar"
+prog_path1="$path_software/emmax"
+
+prog_file2="$stask.calculation.py"
+prog_path2=$binpath
+
+prog_file3="python"
+prog_path3="$path_software/$prog_file3/Python-3.5.1"
+
+prog_file4A01="$stask.histogram.R"
+prog_file4A02="$stask.scatterplot.R"
+prog_path4=$binpath
+
+#################### inputs ####################
+infile1="pheno_idInt_id_sex_FY_MY_PY_EDC_YoB_Breed.txt"
+inpath1="$path_data/phenotype/Iona_20160115"
+
+infile2="genotypes_imp"
+inpath2="/group/dairy/allimputed17112014/fimputeResults/dose"
+
+infile3="MAP_SEQRUN4_4COPIES.txt"
+inpath3="/group/dairy/allimputed17112014/fimputeResults/dose"
+
+infile4="finalise.$db.$tag2.tab"
+inpath4="$outpath/$tag2"
+
+infile5="chroms.txt"
+inpath5="$path_software/emmax"
+
+#################### tmpfiles ####################
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outpath1="$outpath/$breed"
+
+outfile3A01=$tag2"id_freqAllele0_freqAllele1_freqAlleleMinor_freqGeno0_freqGeno1_freqGeno2_bool$tag1.$breed.$db.$projdate.$psf.tab"
+outfile3B01="Histogram."$stask"_bool$tag1.$breed.$db.$projdate.$psf.png"
+outfile3B02="Scatterplot.ProportionVariants_AlleleFrequency.$breed.$db.$projdate.$psf.png"
+outpath2=$outpath1/$db
+
+outfile4A01="$breed.$infile1"
+outfile4B01="1000BullImputed.filtered.$chrN.genotypes.noAnimalId.$breed.$projdate.$psf.txt"
+outfile4B02="1000BullImputed.filtered.$chrN.snpids.$breed.$projdate.$psf.txt"
+outfile4C01=$tag2"id_freqAllele0_freqAllele1_freqAlleleMinor_freqGeno0_freqGeno1_freqGeno2_$tag1.$chrN.$breed.$db.$projdate.$psf.tab"
+outpath3="$outpath2/$chrN"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### decompress files and move to $NODEDIR ####################
+
+#################### analysis ####################
+# gather all $outfileC03 results from 1-30 chromosomes #
+for chrN in `cat $inpath5/$infile5`; do
+    outfile4C01=$tag2"id_freqAllele0_freqAllele1_freqAlleleMinor_freqGeno0_freqGeno1_freqGeno2_$tag1.$chrN.$breed.$db.$projdate.$psf.tab"
+    outpath4="$outpath3/$chrN"
+    cat $outpath4/$outfile4C01 >> $NODEDIR/$outfile3A01
+done
+
+## generate MAF report ##
+Rscript $prog_path4/$prog_file4A01 $NODEDIR/$outfile3A01 $NODEDIR/$outfile3B01
+Rscript $prog_path4/$prog_file4A02 $NODEDIR/$outfile3A01 $NODEDIR/$outfile3B02
+
+#################### copy result back to working directory ####################
+targets=($NODEDIR/$outfile3B01 $NODEDIR/$outfile3B02)
+for i in ${targets[@]}; do cp $i $outpath3/; done
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Output directory:                  $outpath3"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

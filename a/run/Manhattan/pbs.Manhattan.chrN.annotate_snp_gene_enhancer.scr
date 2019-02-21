@@ -1,0 +1,148 @@
+#!/bin/bash
+
+# Description:
+# Run the same script per file or per record in parallel.
+# Min Wang, March 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N Manhattan
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task='GWAS'
+stask='Manhattan'
+gender='bull'
+pheno='FY'
+chrN=14
+tag1='enhancer'; tag2='snp'; tag3='gene'
+base=10
+zoomIn_start=0
+zoomIn_end='Inf'      # full length
+#zoomIn_start=1745425 # DGAT1 gene start 
+#zoomIn_end=1854838   # DGAT1 gene end 
+plot_width=4800
+plot_height=960
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1=$stask".chrN.annotate_"$tag2"_"$tag3"_$tag1.R" 
+prog_path1=$binpath
+
+#################### inputs ####################
+infile1="chrom$chrN.ps"
+inpath1="$outpath/$gender/$pheno/$chrN"
+
+infileB01="Raven2013GSE.table1.50K_snp.bosTau8.tab"
+infileB02="Raven2014BMC.table4.800K_snp.bosTau8.tab"
+infileB03="Raven2014GSE.table1.8058_snp.bosTau8.tab"
+infileB04="Raven2014GSE.table2.8058_snp.bosTau8.tab"
+infileB05="Raven2014GSE.table3.8058_snp.bosTau8.tab"
+inpathB="$path_data/annotation"
+
+infileC01="BH.PAG_DEFB_CATHL_NK_PRL_DATG1.tab"
+inpathC="$path_data/annotation"
+
+infileD01="finalise.Villar_2015.$tag1.bed"
+infileD02="finalise.dbSUPER.$tag1.bed"
+infileD03="finalise.FANTOM5.$tag1.bed"
+infileD04="finalise.VISTA.$tag1.bed"
+inpathD="$path_analyse/out/GSEA/$tag1"
+
+#################### outputs ####################
+outfileA01="snpName_snpChr_snpPos_snpEffect_snpPvalue.$gender.$pheno.$chrN.$projdate.$psf.tab"
+outfileA02="pheno_snpChr_snpPos_geneName.$gender.$pheno.$chrN.$projdate.$psf.tab"
+outfileA03="pheno_geneChr_geneStart_geneEnd_geneName.$gender.$pheno.$chrN.$projdate.$psf.tab"
+outfileA04="pheno_geneChr_geneStart_geneEnd_"$tag1"Source.$pvalue_threshold.$gender.$pheno.$chrN.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfileB01="output.$stask.-log$base.$gender.$pheno.Chr$chrN[$zoomIn_start,$zoomIn_end].$projdate.$psf.png"
+outpath1="$outpath/$stask"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+#################### analysis ####################
+# copy input files to $outpath1 and decompress #
+
+## GWAS SNP data ##
+awk '{print $1}' $inpath1/$infile1 > $NODEDIR/snp_names
+sed 's/:/\t/g' $inpath1/$infile1 | sed 's/Chr//g' > $NODEDIR/rest
+paste -d"\t" $NODEDIR/snp_names $NODEDIR/rest > $NODEDIR/$outfileA01
+
+## snp annotation data ##
+tail -n +2 $inpathB/$infileB02 | awk 'BEGIN{OFS="\t";} {
+                                      if(tolower($1) == "fat" || tolower($1) == "fat yield")
+                                          print "FY", $3, $4
+                                      else if(tolower($1) == "milk" || tolower($1) == "milk yield" || tolower($1) == "milk volumn")
+                                          print "MY", $3, $4
+                                      else if(tolower($1) == "protein" || tolower($1) == "protein yield")
+                                          print "PY", $3, $4}' > $NODEDIR/tmp1
+tail -n +2 $inpathB/$infileB02 | awk '{if($5 != "NA") print $5; else if($6 != "NA") print $6; else if($7 != "NA") print $7}' > $NODEDIR/tmp2
+paste -d"\t" $NODEDIR/tmp1 $NODEDIR/tmp2 | uniq > $NODEDIR/$outfileA02
+
+## gene annotation data ##
+traits=("FY" "MY" "PY")
+files=($inpathB/$infileB01 $inpathB/$infileB03 $inpathB/$infileB04 $inpathB/$infileB05)
+for i in ${traits[@]}; do
+    for file in ${files[@]}; do
+        tail -n +2 $file | awk -v trait=$i 'BEGIN{OFS="\t";} {print trait, $2, $3, $4, $1}'
+    done
+done | uniq > $NODEDIR/$outfileA03
+
+tail -n +2 $inpathC/$infileC01 | awk -F'\t' 'BEGIN{OFS="\t";} {print "all", $1, $2, $3, $4}' >> $NODEDIR/$outfileA03
+
+## significant SNPs within putative enhancers ##
+targets=($inpathD/$infileD01 $inpathD/$infileD02 $inpathD/$infileD03 $inpathD/$infileD04)
+for i in ${targets[@]}; do 
+    awk 'BEGIN{OFS="\t";} {print "all",$0}' $i | sed 's/Chr//g' | sed 's/:/\t/g' | sort -g -k2,3 | uniq >> $NODEDIR/$outfileA04
+done 
+
+# plot Manhattan with annotation #
+Rscript $prog_path1/$prog_file1 $NODEDIR/$outfileA01 $NODEDIR/$outfileA02 $NODEDIR/$outfileA03 $NODEDIR/$outfileA04 $NODEDIR/$outfileB01 $base $zoomIn_start $zoomIn_end $plot_width $plot_height
+
+# compress files and copy results back to my working directory #
+target=($NODEDIR/$outfileB01)
+for i in "${target[@]}"; do cp $i $outpath1/ ; done 
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:  $PBS_JOBNAME"
+echo "PBS_JOBID:    $PBS_JOBID"
+echo "Target:       $outpath1/$outfileB01"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+
+

@@ -1,0 +1,106 @@
+#!/bin/bash
+
+# Description:
+# This script generates a boxplot to visualize the variance of three priortised
+# DGAT1 enhancer variants.
+# Min Wang, June 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# #fit your case.
+
+# Stats for job 2385456 run on comp055:
+#         max memory used = 8.7GB
+#         walltime        = 02:18:31
+#         total CPU time  = 02:09:47
+# Submitted using:
+#         qsub pbs.boxplotVariance.unionset.scr
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N boxplotVariance
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=20G
+#PBS -l walltime=20:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate='2016-01-19'
+psf='c' # project sub-folder
+task='GSEA'
+folder="GCF_000003055.6_Bos_taurus_UMD_3.1.1"
+tag1='enhancer';  tag2='snp';  tag3='gene'
+distance='1000000' # nt
+regions=('TNS1' 'POGZ' 'SELENBP1' 'TBX15' 'BCAR3' 'RAD54L' 'PIK3R3' 'COL6A3' 
+         'RBM44' 'ABCB4' 'MGST1' 'LAP3' 'MED28' 'FAM184B' 'NPR2' 'DCLK1' 'LOC101902669'
+         'C14H8orf33' 'ZNF34' 'RPL8' 'ZNF7' 'C14H8orf82' 'MAF1' 'EXOSC4' 'SPATC1' 
+         'LOC101908059' 'PUF60' 'SCRIB' 'LOC506831' 'FAM83H' 'MAPK15' 'TIGD5' 'EEF1D'
+         'NAPRT' 'GSDMD' 'ZC3H3' 'RHPN1' 'TOP1MT' 'GLI4' 'ZFP41' 'LY6H' 'LOC787628'
+         'GML' 'LY6K' 'LOC107133096' 'LYNX1' 'ARC' 'GPR20' 'SLC45A4' 'PTK2' 'AGO2'
+         'CHRAC1' 'TRAPPC9' 'KCNK9' 'MTSS1' 'GRHL2' 'CPQ' 'SDC2' 'NCAM1' 'PRIM2')
+
+########## Define paths ##########
+path_pre="/group/dairy/Min/geno2pheno"
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_refgen="$path_data/ref_genomes/ftp.ncbi.nlm.nih.gov/genomes/all"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="boxplotVariance.unionset.R"
+prog_path1=$binpath
+
+########## inputs ##########
+infile1=$folder"_genomic.gff.gz"
+inpath1="$path_refgen/$folder"
+
+infile2="NCBI.refgen.infoTable.umd311.tab"
+inpath2="$path_data/annotation"
+
+########## outputs ##########
+tmpfile="RefSeq_start_end_geneName.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile1="boxplot.$projdate.$psf.png"
+outpath1="$outpath/`echo $prog_file1 | sed 's/.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+targets=($NODEDIR/$tmpfile)
+for i in ${targets[@]}; do remove_file $i; done 
+
+########## analysis ##########
+for i in ${regions[@]}; do
+    zcat $inpath1/$infile1 | grep "=$i;" - | awk -F'\t' -v geneName=$i 'BEGIN{OFS="\t";} {print $1, $4, $5, geneName}' >> $NODEDIR/$tmpfile
+done 
+
+Rscript $prog_path1/$prog_file1 $NODEDIR/$tmpfile $inpath2/$infile2 $outpath1/$outfile1
+
+########## write to *.o* #file ##########
+echo ""
+echo "PBS_JOBNAME:  $PBS_JOBNAME"
+echo "PBS_JOBID:    $PBS_JOBID"
+echo "Target:       $outpath1/$outfile1"
+echo ""
+
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 
+
+
+

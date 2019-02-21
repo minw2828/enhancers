@@ -1,0 +1,158 @@
+#!/bin/bash
+
+# Description:
+# Run the same script per file or per record in parallel.
+# Min Wang, April 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.enrichment.scr [script_name] [parallel_index]
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='d'
+task="GSEA"
+parallel_index=$2
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'Villar_2015')
+genders=('bull' 'cow')
+phenos=('FY' 'MY' 'PY')
+breeds=('hol' 'jer')
+pTresholds=(0.0001 0.0000001 0.0000000000000000001) #(10e-05 10e-08 10e-20)
+tag1='enhancer';  tag2='snp';  tag3='gene'
+ntimes=10000
+fdr=0.01
+nTrueThreshold=0 # $nTRUE > $nTrueThreshold in the case
+chews=('tender' 'tough')
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1=$1
+prog_path1=$runpath
+
+#################### inputs ####################
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+infile2=$task"enriched.gender_pheno_chrN_db.$nTrueThreshold.$fdr.$ntimes.$projdate.$psf.csv"
+inpath2="$outpath/enriched"
+
+#################### analysis ####################
+# parallel_index: 1
+function pheno_chew { for p in ${phenos[@]}; do for c in ${chews[@]}; do qsub -v pheno=$p,chew=$c $prog_path1/$prog_file1; done; done }
+
+# parallel_index: 2
+function breed_db { for a in ${breeds[@]}; do for c in ${dbs[@]}; do qsub -v breed=$a,db=$c $prog_path1/$prog_file1; done; done }
+
+# parallel_index: 3
+function gender_pheno { for a in ${genders[@]}; do for b in ${phenos[@]}; do qsub -v gender=$a,pheno=$b $prog_path1/$prog_file1; done; done }
+
+# parallel_index: 4
+function gender_pheno_db { for a in ${genders[@]}; do for b in ${phenos[@]}; do for c in ${dbs[@]}; do qsub -v gender=$a,pheno=$b,db=$c $prog_path1/$prog_file1; done; done; done }
+
+# parallel_index: 5
+function gender_pheno_chrN { for a in ${genders[@]}; do for b in ${phenos[@]}; do for c in `cat $inpath1/$infile1`; do qsub -v gender=$a,pheno=$b,chrN=$c $prog_path1/$prog_file1; done; done; done }
+
+# parallel_index: 6
+function gender_pheno_chrN_db { for a in ${genders[@]}; do for b in ${phenos[@]}; do for c in `cat $inpath1/$infile1`; do for d in ${dbs[@]}; do qsub -v gender=$a,pheno=$b,chrN=$c,db=$d $prog_path1/$prog_file1; done; done; done; done }
+
+# parallel_index: 7
+function gender_pheno_chrN_db_pTreshold { 
+    for a in ${genders[@]}; do for b in ${phenos[@]}; do for c in `cat $inpath1/$infile1`; do for d in ${dbs[@]}; do for e in ${pTresholds[@]}; do 
+        qsub -v gender=$a,pheno=$b,chrN=$c,db=$d,pTreshold=$e $prog_path1/$prog_file1
+    done; done; done; done; done 
+}
+
+# parallel_index: 8
+function gender_pheno_chrN_db_distance {
+#    distance_start=100000     # 100kb
+#    distance_end=2100000      # 2.1Mb
+#    distance_increment=500000
+    distance_start=5000       # 5Kb
+    distance_end=1000000      # 1Mb
+    distance_increment=500000 # 500Kb
+    ## select to report ##
+    SAVEIFS=$IFS;
+    IFS=',';
+    tail -n +2 $inpath2/$infile2 | while read line; do
+        set -- $line;
+        gender=$1;
+        pheno=$2;
+        chrN=`echo $3 | awk '{ printf("%02d", $1) }'`;
+        db=$4;
+        distance=$distance_start
+        while [ $distance -le $distance_end ]; do 
+            qsub -v gender=$gender,pheno=$pheno,chrN=$chrN,db=$db,distance=$distance $prog_path1/$prog_file1
+        done 
+    done 
+    IFS=$SAVEIFS;
+}
+
+# parallel_index: 9
+function gender_pheno_chrN_db_distance2 {
+    # 1Kb, 2Kb, 5Kb, 100Kb, 200Kb, 500Kb, 1Mb, 2Mb
+    distances=(1000000)
+    ## select to report ##
+    SAVEIFS=$IFS;
+    IFS=',';
+    for distance in ${distances[@]}; do
+        tail -n +2 $inpath2/$infile2 | while read line; do
+            set -- $line;
+            gender=$1;
+            pheno=$2;
+            chrN=`echo $3 | awk '{ printf("%02d", $1) }'`;
+            db=$4;
+            qsub -v gender=$gender,pheno=$pheno,chrN=$chrN,db=$db,distance=$distance $prog_path1/$prog_file1
+        done 
+    done
+    IFS=$SAVEIFS;
+}
+
+# parallel_index: 10
+function enriched_gender_pheno_chrN_db {
+    ## select to report ##
+    SAVEIFS=$IFS;
+    IFS=',';
+    tail -n +2 $inpath2/$infile2 | while read line; do
+        set -- $line;
+        gender=$1;
+        pheno=$2;
+        chrN=`echo $3 | awk '{ printf("%02d", $1) }'`;
+        db=$4;
+        qsub -v gender=$gender,pheno=$pheno,chrN=$chrN,db=$db $prog_path1/$prog_file1
+    done
+    IFS=$SAVEIFS;
+}
+
+# parallel_index: 11
+function chrN { for chrN in `cat $inpath1/$infile1`; do qsub -v chrN=$chrN $prog_path1/$prog_file1; done }
+
+# parallel_index: 12 
+function pheno_db { for b in ${phenos[@]}; do for d in ${dbs[@]}; do qsub -v pheno=$b,db=$d $prog_path1/$prog_file1; done; done }
+
+if   [ $parallel_index -eq 1 ]; then pheno_chew
+#elif [ $parallel_index -eq 2 ]; then breed_db
+#elif [ $parallel_index -eq 3 ]; then gender_pheno
+#elif [ $parallel_index -eq 4 ]; then gender_pheno_db
+#elif [ $parallel_index -eq 5 ]; then gender_pheno_chrN
+#elif [ $parallel_index -eq 6 ]; then gender_pheno_chrN_db
+#elif [ $parallel_index -eq 7 ]; then gender_pheno_chrN_db_pTreshold
+#elif [ $parallel_index -eq 8 ]; then gender_pheno_chrN_db_distance
+#elif [ $parallel_index -eq 9 ]; then gender_pheno_chrN_db_distance2
+#elif [ $parallel_index -eq 10 ]; then enriched_gender_pheno_chrN_db
+#elif [ $parallel_index -eq 11 ]; then chrN
+#elif [ $parallel_index -eq 12 ]; then pheno_db
+fi
+
+
+exit 0
+

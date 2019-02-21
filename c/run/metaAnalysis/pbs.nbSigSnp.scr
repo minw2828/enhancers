@@ -1,0 +1,107 @@
+#!/bin/bash
+
+# Description:
+# This script calculates the number of significant SNPs in each category.
+# Min Wang, July 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N nbSigSnp
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=10G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task="metaAnalysis"
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'H3K4me3' 'H3K27Ac')
+pLevelSig='10e-08'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="nbSigSnp.R"
+
+#################### inputs ####################
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+#infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.$psf.tab"
+inpath2="$outpath/reengineerBHzScoref90.v2"
+
+#infile3="snpName.$db.$oRefgen.$projdate.$psf.csv"
+inpath3="$path_pre/analyses/$projdate/a/out/TFBS/reduce.bioconductor"
+
+#################### tmpfiles ####################
+tmpfile2="chr_pos_snpName_pheno_pmeta.$projdate.$psf.csv"
+tmpfile3="chr_pos_snpName_db.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="pheno_nbSigSnp_nbSnp_ratio_answer.$pLevelSig.$projdate.$psf.csv"
+outfile2="pheno_chr_nbSigSnp.$pLevelSig.$projdate.$psf.csv"
+outfile3="pheno_db_chr_nbSigSnp.$pLevelSig.$projdate.$psf.csv"  
+
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $path_analyse/run/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpFile2 {
+    remove_file $NODEDIR/$tmpfile2
+    for chrN in `cat $inpath1/$infile1`; do
+        infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.$psf.tab"
+        awk -F'\t' 'BEGIN{OFS=",";} {print $1, $1, $2, $NF}' $inpath2/$infile2 | sed 's/Chr//1' | sed 's/:/,/1' >> $NODEDIR/$tmpfile2
+    done 
+}
+
+function getTmpFile3 {
+    remove_file $NODEDIR/$tmpfile3
+    for db in ${dbs[@]}; do
+        infile3="snpName.$db.$oRefgen.$projdate.$psf.csv"
+        awk -F',' -v db=$db 'BEGIN{OFS=",";} {print $1, $1, db}' $inpath3/$infile3 | sed 's/^chr//g' | sed 's/^Chr//g' | sed 's/:/,/1'  >> $NODEDIR/$tmpfile3
+    done
+}
+
+getTmpFile2
+getTmpFile3
+echo Rscript $binpath/$prog_file1 $NODEDIR/$tmpfile2 $NODEDIR/$tmpfile3 $outpath1/$outfile1 $outpath1/$outfile2 $outpath1/$outfile3
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is"  $NODEDIR
+echo "Target:                            $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

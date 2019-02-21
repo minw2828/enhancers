@@ -1,0 +1,95 @@
+#!/bin/bash
+
+# Description:
+# Finalised snps within putative bovine promoters (Zhao2015).
+# Min Wang, November 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N finalise_snp
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate='2016-01-19'
+psf='d' # project sub-folder
+task='GSEA'
+tag1='promoter';     tag2='snp'
+db='Zhao2015'
+folder='GCF_000003055.6_Bos_taurus_UMD_3.1.1'
+
+########## Define paths ##########
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="finalise_snp.DB.R"
+prog_path1=$binpath
+
+########## inputs ##########
+infile1="chr_start_end_db_chew.$db.tender.$tag1.$projdate.$psf.bed"
+infile2="chr_start_end_db_chew.$db.tough.$tag1.$projdate.$psf.bed"
+inpath1="$outpath/$tag1"
+
+infile3="MAP_SEQRUN4_4COPIES.txt"
+inpath3="/group/dairy/allimputed17112014/fimputeResults/dose"   # BH's 1000 Bull Genome Run4 Imputed
+
+########## tmpfiles ##########
+tmpfile1=$infile1
+tmpfile2=$infile2
+NODEDIR=/tmp/$PBS_JOBID
+
+########## outputs ##########
+outfile1="chr_pos_db_chew.$db.`echo $infile1 | awk -F'.' '{print $3}'`.$tag2.$projdate.$psf.bed"
+outfile2="chr_pos_db_chew.$db.`echo $infile2 | awk -F'.' '{print $3}'`.$tag2.$projdate.$psf.bed"
+outpath1="$outpath/$tag2"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+########## decompress files and move to $NODEDIR ##########
+
+########## analysis ##########
+function getTmpfile {
+    sed 's/^chr//g' $1 | sed 's/Chr//g' | sed 's/^X/30/g' | grep -v ^M > $2
+}
+
+getTmpfile $inpath1/$infile1 $NODEDIR/$tmpfile1
+getTmpfile $inpath1/$infile2 $NODEDIR/$tmpfile2
+Rscript $prog_path1/$prog_file1 $inpath3/$infile3 $NODEDIR/$tmpfile1 $outpath1/$outfile1
+Rscript $prog_path1/$prog_file1 $inpath3/$infile3 $NODEDIR/$tmpfile2 $outpath1/$outfile2
+
+########## write to *.o* #file ##########
+echo ""
+echo "PBS_JOBNAME:         $PBS_JOBNAME"
+echo "PBS_JOBID:           $PBS_JOBID"
+echo "Output directory:    $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

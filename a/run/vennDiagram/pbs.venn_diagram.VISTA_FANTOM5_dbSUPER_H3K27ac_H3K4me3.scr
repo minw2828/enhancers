@@ -1,0 +1,90 @@
+#!/bin/bash
+
+# Description:
+# This script visualizes the degrees of overlaps among VISTA, FANTOM5, dbSUPER,
+# Villar H3K4me3 and Villar H3K27ac enhancer genomic intervals.
+# Min Wang, Jan 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Stats for job 2772385 run on comp027:
+#         max memory used = 22.7GB
+#         walltime        = 01:06:47
+#         total CPU time  = 01:06:11
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N venn_diagram.VISTA_FANTOM5_dbSUPER_H3K27ac_H3K4me3
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=30G
+#PBS -l walltime=05:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate='2016-01-19'
+psf='a' # project sub-folder
+task='GSEA'
+refgen='bosTau'
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'H3K27Ac' 'H3K4me3')
+mainCex='85e-01'
+subMainCex=8
+Weight=3000
+Height=3000
+
+########## Define paths ##########
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="venn_diagram.VISTA_FANTOM5_dbSUPER_H3K27ac_H3K4me3.R"
+
+############# inputs #############
+infile1="snpName_db.$projdate.$psf.csv"
+inpath1="$outpath/range2pos.VISTA_FANTOM5_dbSUPER_H3K27ac_H3K4me3"
+
+############# tmpfile1s #############
+tmpfile="$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+############# outputs #############
+outfile1="`echo $prog_file1 | sed 's/\.R//g'`.$mainCex.$subMainCex.$Weight.$Height.$projdate.$psf.png"
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+########## analysis ##########
+Rscript $binpath/$prog_file1 $inpath1/$infile1 $outpath1/$outfile1
+
+
+########## write to *.o* #file ##########
+echo ""
+echo "PBS_JOBNAME:            $PBS_JOBNAME"
+echo "PBS_JOBID:              $PBS_JOBID"
+echo "Output Directory:       $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+
+exit 0
+
+
+

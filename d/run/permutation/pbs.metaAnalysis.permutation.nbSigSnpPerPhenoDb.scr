@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# Description:
+# This script performs permutation test on meta-analysis results.
+# Min Wang, November 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Stats for job 2569747 run on comp098:
+#         max memory used = 18.9GB
+#         walltime        = 03:01:58
+#         total CPU time  = 03:00:37
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N metaAnalysis.permutation.nbSigSnpPerPhenoDb
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=30G
+#PBS -l walltime=10:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='d'
+task="GSEA"
+tag1='promoter';  tag2='snp';  tag3='gene'
+dbs=('Zhao2015')
+chews=('tender' 'tough')
+histone='H3K4me3'
+pSigLevel="10e-08"
+ntimes=10000
+nc=3
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="metaAnalysis.permutation.nbSigSnpPerPhenoDb.cal.R"
+prog_file2="metaAnalysis.permutation.nbSigSnpPerPhenoDb.plot.R"
+prog_file3="metaAnalysis.permutation.nbSigSnpPerPhenoDb.rank.R"
+prog_file4="metaAnalysis.permutation.nbSigSnpPerPhenoDb.foldChange.R"
+
+#################### inputs ####################
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+#infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.c.tab"
+inpath2="$path_pre/analyses/$projdate/c/out/$task/metaAnalysis.reengineerBHzScoref90.v2"
+
+#infile3="chr_pos_db_chew.$db.$chew.$tag2.$projdate.$psf.bed"
+inpath3="$outpath/$tag2"
+
+#################### tmpfiles ####################
+tmpfile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$projdate.$psf.tab"
+tmpfile3="snpName_db.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="NbSigSnp_tpe_pheno_db.$pSigLevel.$ntimes.$projdate.$psf.csv"  
+outfile2="`echo $prog_file1 | sed 's/.cal.R//g'`.$histone.$pSigLevel.$ntimes.$nc.$projdate.$psf.png"
+outfile3="pheno_db_rank.$pSigLevel.$ntimes.$projdate.$psf.csv"
+outfile4="pheno_db_foldChange.$pSigLevel.$ntimes.$projdate.$psf.csv"
+
+outpath1="$outpath/`echo $prog_file1 | sed 's/.cal.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile2 {
+    remove_file $NODEDIR/$tmpfile2
+    for chrN in `cat $inpath1/$infile1`; do
+        infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.c.tab"
+        cat $inpath2/$infile2 >> $NODEDIR/$tmpfile2
+    done 
+}
+
+function getTmpfile3 {
+    remove_file $NODEDIR/$tmpfile3
+    for db in ${dbs[@]}; do
+        for chew in ${chews[@]}; do
+            infile3="chr_pos_db_chew.$db.$chew.$tag2.$projdate.$psf.bed"
+            awk -F'\t' 'BEGIN{OFS=",";} {print "Chr"$1":"$2, $3":"$4}' $inpath3/$infile3 >> $NODEDIR/$tmpfile3
+        done 
+    done
+}
+
+#getTmpfile2
+#getTmpfile3
+#Rscript $binpath/$prog_file1 $NODEDIR/$tmpfile2 $NODEDIR/$tmpfile3 $outpath1/$outfile1
+#Rscript $binpath/$prog_file2 $outpath1/$outfile1 $outpath1/$outfile2
+#Rscript $binpath/$prog_file3 $outpath1/$outfile1 $outpath1/$outfile3
+Rscript $binpath/$prog_file4 $outpath1/$outfile1 $outpath1/$outfile4
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is   $NODEDIR"
+echo "Output directory:                  $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

@@ -1,0 +1,133 @@
+#!/bin/bash
+
+# Description:
+# This script 
+# Min Wang, Jan 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N nbSigSnpPerPhenoDb.dbSUPERmerged
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=30G
+#PBS -l walltime=10:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task="permutation"
+refgen='bosTau'
+pSigLevel="10e-08"
+#pheno='PY'
+db='dbSUPER'
+folder='GCF_000003055.6_Bos_taurus_UMD_3.1.1'
+evalue='4e-17'
+elen=30000 
+ntimes=10000
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="getSnp.dbSUPERmerged.R"
+prog_path2=$binpath
+
+prog_file3="nbSigSnpPerPhenoDb.dbSUPERmerged.R"
+prog_path3=$binpath
+
+#################### inputs ####################
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+#infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.c.tab"
+inpath2="$path_pre/analyses/$projdate/c/out/metaAnalysis/reengineerBHzScoref90.v2"
+
+infile3="output.table_stats.csv"
+inpath3="$path_pre/analyses/2015-10-28/d/out/report/$folder/$evalue" # $db3, $method1, $evalue2
+
+infilepattern4=$db*"bosTau6ToBosTau8.over.chain.bed"
+inpath4="$path_pre/analyses/2016-02-29/a/out/liftOver"       # $db1, $method2
+
+infile5="MAP_SEQRUN4_4COPIES.txt"
+inpath5="/group/dairy/allimputed17112014/fimputeResults/dose"   # BH's 1000 Bull Genome Run4 Imputed
+
+#################### tmpfiles ####################
+tmpfile1="snpName.`echo $prog_file3 | awk -F'.' '{print $4}'`.$pheno.$db.$elen.$projdate.$psf.csv"
+tmpfile2="snpName_pmeta.$projdate.$psf.csv"
+tmpfile3="chr_start_end_db.$projdate.$psf.csv"
+tmpfile5="snpName_chr_start_end.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="nbSnp_tpe.$pheno.$db.$elen.$pSigLevel.$ntimes.$projdate.$psf.csv"
+outfile2="rank_foldChange.$pheno.$db.$elen.$pSigLevel.$ntimes.$projdate.$psf.csv"
+outpath1="$outpath/`echo $prog_file3 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile2 {
+    remove_file $NODEDIR/$tmpfile2
+    for chrN in `cat $inpath1/$infile1`; do
+        infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.c.tab"
+        awk -F'\t' -v p=$pheno 'BEGIN{OFS=",";} {if($2 == p) print $1, $NF}' $inpath2/$infile2 >> $NODEDIR/$tmpfile2
+    done
+}
+
+function getTmpfile3 {
+    remove_file $NODEDIR/$tmpfile3
+    tail -n +2 $inpath3/$infile3 | awk -F, -v db=$db 'BEGIN{OFS=",";} {print $3, $12, $13, toupper(db)}' | sed 's/ /,/g' | awk -F, 'BEGIN{OFS=",";} {print $7, $(NF-2), $(NF-1), $NF}' | grep -v genomic | sed 's/^chr//g' | sed 's/^Chr//g' >> $NODEDIR/$tmpfile3
+    for infile4 in $inpath4/*$infilepattern4; do
+        awk -F'\t' -v db=$db 'BEGIN{OFS=",";} {print $1, $2, $3, toupper(db)}' $infile4 | sed 's/^chr//g' | sed 's/^Chr//g' >> $NODEDIR/$tmpfile3
+    done
+}
+
+function getTmpfile5 {
+    awk 'BEGIN{OFS=",";} {print $1, $3, $4, $4}' $inpath5/$infile5 | sed 's/,30,/,X,/g' > $NODEDIR/$tmpfile5
+}
+
+getTmpfile3
+getTmpfile5
+$prog_path1/$prog_file1 $prog_path2/$prog_file2 $NODEDIR/$tmpfile3 $NODEDIR/$tmpfile5 $NODEDIR/$tmpfile1
+
+getTmpfile2
+$prog_path1/$prog_file1 $prog_path2/$prog_file3 $NODEDIR/$tmpfile2 $NODEDIR/$tmpfile1 $outpath1/$outfile1 $outpath1/$outfile2
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is   $NODEDIR"
+echo "Output directory:                  $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

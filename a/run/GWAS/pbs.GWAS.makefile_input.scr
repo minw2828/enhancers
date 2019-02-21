@@ -1,0 +1,210 @@
+#!/bin/bash
+
+# Description:
+# Min Wang, January 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [ parallel_index = 3 ]
+
+
+#PBS -S /bin/bash
+#PBS -N GWAS
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=100G
+#PBS -l walltime=100:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task="GWAS"
+#gender="cow"
+#pheno="PY"
+#chrN='14'
+tag='enhancer'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_fileA01="genomicRelMatp"
+prog_pathA="/usr/local/bin"
+
+prog_fileB01="filtercolumns.jar"
+prog_fileB02="emmax"
+prog_pathB="$path_software/$prog_fileB02"
+
+#################### inputs ####################
+infile1="pheno_idInt_id_sex_FY_MY_PY_EDC_YoB_Breed.txt"
+inpath1="$path_data/phenotype/Iona_20160115"
+
+infile2="800K_597867_full_genos_orderPheno.txt.gz"
+inpath2="$path_data/genotype/Iona_20160120"
+
+infile3="800KplusExtraNZ_597867overlap_Seq04.map"
+inpath3="$path_data/genotype/Iona_20160120"
+
+infile4="genotypes_imp"
+inpath4="/group/dairy/allimputed17112014/fimputeResults/dose"
+
+infile5="MAP_SEQRUN4_4COPIES.txt"
+inpath5="/group/dairy/allimputed17112014/fimputeResults/dose"
+
+#################### tmpfiles ####################
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outpath1="$outpath/$gender"
+outpath2="$outpath1/$pheno"
+outpath3="$outpath2/$chrN"
+
+outfile1="$tag.pheno"
+outfile2="$tag.cov"
+outfile3="$tag.tfam"
+outfile4="$tag.ids.txt"
+outfile5="$tag.geno" # subset genotype
+outfile6="$tag.grm"
+outfile7="1000BullImputed.filtered.$chrN.txt"
+outfile8="$tag.tped"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### decompress files and move to $NODEDIR ####################
+if [ ! -s $NODEDIR/$infile2D ]; then
+    infile2D=`decompressIfile_redirectOfile $inpath2/$infile2 $NODEDIR 1`
+else 
+    infile2D=`decompressIfile_redirectOfile $inpath2/$infile2 $NODEDIR 0`
+fi
+
+#################### analysis ####################
+## subset file by gender ##
+### the third ('sex') is 1 for cows and 2 for bulls ###
+if [ ! -s "$NODEDIR/$gender.$infile1" ]; then
+    if [ $gender == 'cow' ]; then
+        awk '{if ($3 == 1) print $0}' "$inpath1/$infile1" > "$NODEDIR/$gender.$infile1"
+    elif [ $gender == 'bull' ]; then
+        awk '{if ($3 == 2) print $0}' "$inpath1/$infile1" > "$NODEDIR/$gender.$infile1"
+    fi
+fi
+
+if [ ! -s "$NODEDIR/$outfile1" ]; then
+    # make pheno file #
+    if [ $pheno == "FY" ]; then
+        awk 'BEGIN{OFS="\t";} {print $1,$1,$4}' "$NODEDIR/$gender.$infile1" > "$NODEDIR/$outfile1"
+    elif [ $pheno == "MY" ]; then
+        awk 'BEGIN{OFS="\t";} {print $1,$1,$5}' "$NODEDIR/$gender.$infile1" > "$NODEDIR/$outfile1"
+    elif [ $pheno == "PY" ]; then
+        awk 'BEGIN{OFS="\t";} {print $1,$1,$6}' "$NODEDIR/$gender.$infile1" > "$NODEDIR/$outfile1"
+    fi
+fi
+
+# make cov file #
+if [ ! -s "$NODEDIR/$outfile2" ]; then
+    awk '{if ($NF == "hol") print $1,$1,1,2; else if ($NF == "jer") print $1,$1,1,3}' "$NODEDIR/$gender.$infile1" > "$NODEDIR/$outfile2"
+fi
+
+# make tfam file #
+if [ ! -s "$NODEDIR/$outfile3" ]; then
+    awk 'BEGIN{OFS="\t";} {print $1,$1,0,0,1,1}' "$NODEDIR/$gender.$infile1" > "$NODEDIR/$outfile3"
+fi
+
+# make id file #
+if [ ! -s "$NODEDIR/$outfile4" ]; then
+    awk '{print $1}' "$NODEDIR/$gender.$infile1" > "$NODEDIR/$outfile4"
+fi
+
+# make geno file #
+if [ ! -s "$NODEDIR/$outfile5" ]; then
+    awk 'NR == FNR { a[$0]; next } $1 in a' $NODEDIR/$outfile4 $NODEDIR/$infile2D > $NODEDIR/$outfile5
+fi
+
+# filter my animals from 1000 Bull Genome Run4 data #
+# checked on 07 April 2016; for chrN in 01 ... 30, animal orders in $inpath4/$infile4'_'$chrN.dose are the same.
+if [ ! -s "$NODEDIR/$outfile7" ]; then
+    cat $inpath4/$infile4'_'14.dose | /usr/local/bin/java -jar $prog_pathB/$prog_fileB01 1 $NODEDIR/$outfile4 > $NODEDIR/$outfile7
+fi
+
+# sort files based on 1000 Bull Genome Run 4 animal orders #
+sortFile_arbitraryOrder $NODEDIR/$outfile1 $NODEDIR/$outfile7
+sortFile_arbitraryOrder $NODEDIR/$outfile2 $NODEDIR/$outfile7
+sortFile_arbitraryOrder $NODEDIR/$outfile3 $NODEDIR/$outfile7
+sortFile_arbitraryOrder $NODEDIR/$outfile4 $NODEDIR/$outfile7
+sortFile_arbitraryOrder $NODEDIR/$outfile5 $NODEDIR/$outfile7
+
+# check if animal IDs are identical #
+targets=($NODEDIR/$outfile1 $NODEDIR/$outfile2 $NODEDIR/$outfile3 $NODEDIR/$outfile4 $NODEDIR/$outfile5 $NODEDIR/$outfile7)
+bool_identical_ids $targets
+
+# check if SNP IDs are identical $
+# 04 March 2016: Checked: Both $inpath3/$infile3 $inpath5/$infile5 are sorted by chr and pos (4th and 5th columns, 3th and 4th columns respectively) by general numeric value.
+
+# make grm file #
+if [ ! -s "$NODEDIR/$outfile6" ]; then
+    # calculation
+    # Usage: genomicRelMatp genotypeFileName outputFilePrefix numOfSnps numOfAnimals minimumAlleleFreq diagonalAdjustment writeGRMmatrix(Y/N) writeGIVmatrix(Y/N) checkGenotypes(Y/N) numOfThreads diagonalCalcDifferent(Y/N) [snpFileName]
+    #        genomicRelMatp H haplotypeFileName outputFilePrefix numOfHaplotypes numOfAnimals diagonalAdjustment writeGRMmatrix(Y/N) writeGIVmatrix(Y/N) checkGenotypes(Y/N) numOfThreads genotypeOn1Line(Y/N) [snpFileName]
+    numOfSnps=`awk -F ' ' '{print (NF-1); exit}' $NODEDIR/$outfile5`
+    numOfAnimals=`wc -l < $NODEDIR/$outfile5`
+    minimumAlleleFreq="0.005"
+    diagonalAdjustment="0"
+    writeGRMmatrix="Y"
+    writeGIVmatrix="N"
+    checkGenotypes="Y"
+    numOfThreads="5"
+    diagonalCalcDifferent="N"
+    "$prog_pathA/$prog_fileA01" "$NODEDIR/$outfile5" "$NODEDIR/$tag" $numOfSnps $numOfAnimals $minimumAlleleFreq $diagonalAdjustment $writeGRMmatrix $writeGIVmatrix $checkGenotypes $numOfThreads $diagonalCalcDifferent
+fi
+
+# remove row ids in grm file as per required #
+if [ ! -s "$NODEDIR/$outfile6.noRowID" ]; then
+    cut -d " " -f 2- $NODEDIR/$outfile6 > $NODEDIR/$outfile6.noRowID
+fi
+
+#################### compress files, copy outfiles back and delete $NODEDIR ####################
+cp $NODEDIR/$outfile1 $outpath2/
+cp $NODEDIR/$outfile2 $outpath1/
+cp $NODEDIR/$outfile3 $outpath1/
+cp $NODEDIR/$outfile4 $outpath1/
+gzip -c $NODEDIR/$outfile5 > $outpath1/$outfile5.gz
+gzip -c $NODEDIR/$outfile6 > $outpath1/$outfile6.gz
+gzip -c $NODEDIR/$outfile6.noRowID > $NODEDIR/$outfile6.noRowID.gz
+rm -rf $NODEDIR
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is"  $NODEDIR
+echo "Target:                            $outpath2/$outfile1"
+echo "                                   $outpath1/$outfile2"
+echo "                                   $outpath1/$outfile3"
+echo "                                   $outpath1/$outfile4"
+echo "                                   $outpath1/$outfile5.gz"
+echo "                                   $outpath1/$outfile6.gz"
+echo "                                   $outpath1/$outfile6.noRowID.gz"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

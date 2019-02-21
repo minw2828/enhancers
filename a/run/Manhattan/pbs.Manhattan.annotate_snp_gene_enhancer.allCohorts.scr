@@ -1,0 +1,157 @@
+#!/bin/bash
+
+# Description:
+# Run the same script per file or per record in parallel.
+# Min Wang, March 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N Manhattan
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task='GWAS'
+tag1='enhancer'; tag2='snp'; tag3='gene'
+genders=('bull' 'cow')
+phenos=("FY" "MY" "PY")
+logBase=10
+nc=2 # the first column is for annotating subplot index 
+subPlotIndex='a'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Manhattan.annotate_snp_gene_enhancer.allCohorts.R"
+prog_path1=$binpath
+
+#################### inputs ####################
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+#infile2="chrom$chrN.ps"
+#inpath2="$outpath/$gender/$pheno/$chrN"
+
+infile3="Raven2014BMC.table4.800K_snp.bosTau8.tab"
+inpath3="$path_data/annotation"
+
+infile41="Raven2013GSE.table1.50K_snp.bosTau8.tab"
+infile42="Raven2014GSE.table1.8058_snp.bosTau8.tab"
+infile43="Raven2014GSE.table2.8058_snp.bosTau8.tab"
+infile44="Raven2014GSE.table3.8058_snp.bosTau8.tab"
+inpath4="$path_data/annotation"
+
+infile5="BH.PAG_DEFB_CATHL_NK_PRL_DATG1.tab"
+inpath5="$path_data/annotation"
+
+infile61="finalise.Villar_2015.$tag1.bed"
+infile62="finalise.dbSUPER.$tag1.bed"
+infile63="finalise.FANTOM5.$tag1.bed"
+infile64="finalise.VISTA.$tag1.bed"
+inpath6="$path_analyse/out/GSEA/$tag1"
+
+#################### outputs ####################
+tmpfile2="gender_pheno_chr_pos_effect_pvalue.tab"
+tmpfile3="pheno_chr_pos_geneName.$projdate.$psf.tab"
+tmpfile4="pheno_chr_start_end_geneName.$projdate.$psf.tab"
+tmpfile6="pheno_chr_start_end_source.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile1="output.$logBase.$nc.$subPlotIndex.$projdate.$psf.png"
+outpath1="$outpath/`echo $prog_file1 | sed 's/.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+#################### analysis ####################
+function getGwasTmpfile {
+    for gender in ${genders[@]}; do 
+        for pheno in ${phenos[@]}; do
+            for chrN in `cat $inpath1/$infile1`; do
+                infile2="chrom$chrN.ps"
+                inpath2="$outpath/$gender/$pheno/$chrN"
+                awk -F'\t' -v gender=$gender -v pheno=$pheno 'BEGIN{OFS="\t"l} {print gender, pheno, $1, $2, $3}' $inpath2/$infile2 | sed 's/Chr//g' | sed 's/:/\t/g' >> $NODEDIR/$tmpfile2
+            done 
+        done 
+    done 
+
+}
+
+function getSnpAnnoTmpfile {
+    tail -n +2 $inpath3/$infile3 | awk 'BEGIN{OFS="\t";} {if(tolower($1) == "fat" || tolower($1) == "fat yield") print "FY", $3, $4
+                                                          else if(tolower($1) == "milk" || tolower($1) == "milk yield" || tolower($1) == "milk volumn") print "MY", $3, $4
+                                                          else if(tolower($1) == "protein" || tolower($1) == "protein yield") print "PY", $3, $4}' > $NODEDIR/$tmpfile3.temp1
+    tail -n +2 $inpath3/$infile3 | awk '{if($5 != "NA") print $5; else if($6 != "NA") print $6; else if($7 != "NA") print $7}' > $NODEDIR/$tmpfile3.temp2
+    paste -d"\t" $NODEDIR/$tmpfile3.temp1 $NODEDIR/$tmpfile3.temp2 | uniq > $NODEDIR/$tmpfile3
+}
+
+function getGeneAnnoTmpfile {
+    infiles=($inpath4/$infile41 $inpath4/$infile42 $inpath4/$infile43 $inpath4/$infile44)
+    for pheno in ${phenos[@]}; do
+        for infile in ${infiles[@]}; do
+            tail -n +2 $infile | awk -v pheno=$pheno 'BEGIN{OFS="\t";} {print pheno, $2, $3, $4, $1}'
+        done
+    done | uniq > $NODEDIR/$tmpfile4
+    tail -n +2 $inpath5/$infile5 | awk -F'\t' 'BEGIN{OFS="\t";} {print "all", $1, $2, $3, $4}' >> $NODEDIR/$tmpfile4
+}
+
+function getEnhancerSnpTmpfile {
+    targets=($inpath6/$infile61 $inpath6/$infile62 $inpath6/$infile63 $inpath6/$infile64)
+    for i in ${targets[@]}; do
+        awk 'BEGIN{OFS="\t";} {print "NA",$0}' $i | sed 's/Chr//g' | sed 's/:/\t/g' | sort -g -k2,3 | uniq >> $NODEDIR/$tmpfile6
+    done
+}
+
+function getTmpfiles {
+    targets=($NODEDIR/$tmpfile1)
+    for i in ${targets[@]}; do remove_file $i; done
+    getGwasTmpfile
+    getSnpAnnoTmpfile
+    getGeneAnnoTmpfile
+    getEnhancerSnpTmpfile
+}
+
+getTmpfiles
+
+# plot Manhattan with annotation #
+echo Rscript $prog_path1/$prog_file1 $NODEDIR/$tmpfile2 $NODEDIR/$tmpfile3 $NODEDIR/$tmpfile4 $NODEDIR/$tmpfile6 $outpath1/$outfile1
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:  $PBS_JOBNAME"
+echo "PBS_JOBID:    $PBS_JOBID"
+echo "Target:       $outpath1/$outfile1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+
+

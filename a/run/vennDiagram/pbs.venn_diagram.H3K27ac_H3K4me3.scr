@@ -1,0 +1,105 @@
+#!/bin/bash
+
+# Description:
+# Min Wang, December 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N venn_diagram.H3K27ac_H3K4me3
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=5G
+#PBS -l walltime=5:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate='2016-01-19'
+psf='a' # project sub-folder
+task='GSEA'
+refgen='bosTau'
+histones=('H3K27Ac' 'H3K4me3')
+db='Villar2015'
+
+########## Define paths ##########
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="venn_diagram.H3K27ac_H3K4me3.R"
+
+############# inputs #############
+#infile1="chr_pos.$refgen.$histone.$db.$projdate.$psf.bed"
+#inpath1="$outpath/$histone" 
+
+#infile2="chr_pos.$refgen.$histone.$db.$projdate.$psf.bed"
+inpath2="$outpath/separateOverlapSnp"
+
+############# tmpfile1s #############
+tmpfile1="snpName_histone.$refgen.$db.before.$projdate.$psf.csv"
+tmpfile2="snpName_histone.$refgen.$db.after.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+############# outputs #############
+outfile1="`echo $prog_file1 | sed 's/\.R//g'`.$refgen.$db.before.$projdate.$psf.png"
+outfile2="`echo $prog_file1 | sed 's/\.R//g'`.$refgen.$db.after.$projdate.$psf.png"
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+########## analysis ##########
+function getTmpfile1 {
+    remove_file $NODEDIR/$tmpfile1
+    for histone in ${histones[@]}; do
+        infile1="chr_pos.$refgen.$histone.$db.$projdate.$psf.bed"
+        inpath1="$outpath/$histone"
+        awk -F'\t' -v h=$histone 'BEGIN{OFS=",";} {print "Chr"$1":"$2, h}' $inpath1/$infile1 >> $NODEDIR/$tmpfile1
+    done 
+}
+
+function getTmpfile2 {
+    remove_file $NODEDIR/$tmpfile2
+    for histone in ${histones[@]}; do
+        infile2="chr_pos.$refgen.$histone.$db.$projdate.$psf.bed"
+        awk -F'\t' -v h=$histone 'BEGIN{OFS=",";} {print "Chr"$1":"$2, h}' $inpath2/$infile2 >> $NODEDIR/$tmpfile2
+    done
+}
+
+getTmpfile1
+Rscript $binpath/$prog_file1 $NODEDIR/$tmpfile1 $outpath1/$outfile1
+
+#getTmpfile2
+#Rscript $binpath/$prog_file1 $NODEDIR/$tmpfile2 $outpath1/$outfile2
+
+########## write to *.o* #file ##########
+echo ""
+echo "PBS_JOBNAME:            $PBS_JOBNAME"
+echo "PBS_JOBID:              $PBS_JOBID"
+echo "Output Directory:       $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+
+exit 0
+
+
+

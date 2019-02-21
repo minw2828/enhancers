@@ -1,0 +1,89 @@
+#!/bin/bash
+
+# Description:
+# This script checks if the significant GSEA core SNPs are prioritised in 
+# Macleod 2016 and Littlejohn 2016 around the MGST1 gene.
+# Min Wang, Feb 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N sigLesSnpInMGST1.Macleod2016_Littlejohn2016.H3K4me3_H2K27ac
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=20G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task='GSEA'
+#pheno='FY'
+#db='H3K4me3'
+tag1='enhancer';  tag2='snp';  tag3='gene'
+ntimes=10000
+geneName='MGST1'
+pSigLvl=1
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="sigLesSnpInMGST1.Macleod2016_Littlejohn2016.H3K4me3_H2K27ac.R"
+
+#################### inputs ####################
+infile1="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"
+inpath1="$outpath/metaAnalysis.GSEA/$pheno/$db"
+
+infile2="MacLeod2016BMC.table8.wgs.bostau8.tab"
+inpath2="$path_data/annotation"
+
+infile3="Littlejohn2016.table1.scientificReports.bostau6.tab"
+inpath3="$path_data/annotation"
+
+#################### tmpfiles ####################
+tmpfile="$pheno.$db.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="chr_snpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum_pheno_db.$geneName.$pSigLvl.$pheno.$db.$projdate.$psf.csv"
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+Rscript $binpath/$prog_file1 $inpath1/$infile1 $inpath2/$infile2 $inpath3/$infile3 $outpath1/$outfile1 
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:             $PBS_JOBNAME"
+echo "PBS_JOBID:               $PBS_JOBID"
+echo "Temporary folder:        $NODEDIR"
+echo "Output directory:        $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+

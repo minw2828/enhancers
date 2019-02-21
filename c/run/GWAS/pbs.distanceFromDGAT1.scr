@@ -1,0 +1,120 @@
+#!/bin/bash
+
+# Description:
+# This script performs meta-analysis by re-engineering BH's zScore.f90 script.
+# Min Wang, July 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N distanceFromDGAT1
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=05G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task="GWAS"
+tag1='enhancer';  tag2='snp';  tag3='gene'
+dbs=("dbSUPER" "H3K4me3" "H3K27Ac")
+chrN=14
+pSigLevel='10e-08'
+gene='DGAT1'
+folder='GCF_000003055.6_Bos_taurus_UMD_3.1.1'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="distanceFromDGAT1.R"
+prog_path1=$binpath
+
+#################### inputs ####################
+infile1="sigSnpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$pSigLevel.$chrN.$projdate.$psf.tab" # After 
+inpath1="$outpath/sigSnp"
+
+infile2=$folder"_genomic.gff.gz"
+inpath2="$path_data/ref_genomes/ftp.ncbi.nlm.nih.gov/genomes/all/$folder"
+
+#infile3="finalise.$db.$tag2.$tag1.tab"
+inpath3="$path_pre/analyses/$projdate/a/out/GSEA/$tag2"
+
+#infile4="chr_pos.bosTau.$db.Villar2015.$projdate.a.bed"
+#inpath4="$path_pre/analyses/$projdate/a/out/GSEA/$db"
+
+#################### tmpfiles ####################
+tmpfile2="chr_start_end.$projdate.$psf.csv"
+tmpfile3="snpName_db.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="db_sigSnpName_pheno_snpeffectmeta_pmeta_minFront2DGAT1_maxFront2DGAT1_minBack2DGAT1_maxBack2DGAT1.$pSigLevel.$chrN.$projdate.$psf.csv"  
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile2 {
+    zcat $inpath2/$infile2 | grep -w $gene | awk -F'\t' -v c=$chrN 'BEGIN{OFS=",";} {if($3 == "gene") print c, $4, $5}' > $NODEDIR/$tmpfile2
+}
+
+function getTmpFile3 {
+    remove_file $NODEDIR/$tmpfile3
+    for db in ${dbs[@]}; do
+        infile3="finalise.$db.$tag2.$tag1.tab"
+        infile4="chr_pos.bosTau.$db.Villar2015.$projdate.a.bed"
+        inpath4="$path_pre/analyses/$projdate/a/out/GSEA/$db"
+        if [ -f $inpath3/$infile3 ]; then
+            infile=$inpath3/$infile3
+            awk -F'\t' -v c=$chrN 'BEGIN{OFS=",";} {if($1 == c) print "Chr"$1":"$2, $3}' $infile >> $NODEDIR/$tmpfile3
+        elif [ -f $inpath4/$infile4 ]; then
+            infile=$inpath4/$infile4
+            awk -F'\t' -v c=$chrN -v db=$db 'BEGIN{OFS=",";} {if($1 == c) print "Chr"$1":"$2, db}' $infile >> $NODEDIR/$tmpfile3
+        else
+            echo "The following input files do not exist:"
+            echo "$inpath3/$infile3"
+            echo "$inpath4/$infile4"
+        fi
+    done 
+}
+
+getTmpfile2
+getTmpFile3
+Rscript $prog_path1/$prog_file1 $inpath1/$infile1 $NODEDIR/$tmpfile2 $NODEDIR/$tmpfile3 $outpath1/$outfile1
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is"  $NODEDIR
+echo "Target:                            $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

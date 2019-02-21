@@ -1,0 +1,153 @@
+#!/bin/bash
+
+# Description:
+# On 14 September 2017, MG, AC, TPH and MW had a skype call to BH. MG raises 
+# a concern on the permutation test that MW performed on her first paper. 
+# MG's concern was that whether the enrichment signal from H3K4me3 regions 
+# was due to LD to mutation in gene, or true enrichment within H3K4me3 regions. 
+# To address the concern, MG proposes the following analyses that will be 
+# performed in this folder. 
+# 
+# This script performs a Chi-Square and a t-test as MG suggests on 18 September.
+#
+# Min Wang, 18 September 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [call_pheno]
+# qsub -v [script_name] 
+
+
+#PBS -S /bin/bash
+#PBS -N result2report.Ttest.v5
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=05G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='e'
+task='dotest'
+ver='v5'
+oRefseq='bostau6'
+pSigMeta='10e-08'
+#pTest='10e-02'
+phenos=('FY' 'MY' 'PY')
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'H3K4me3' 'H3K27Ac' 'tender' 'tough' 'CTCF')
+pDis1='NA'    # a numeric value defines the promoter regions used in promoter() function. If NA, use default setting in upstream in the function: promoters(x, upstream=2000, downstream=200, ...)
+pDis2='NA'    # a numeric value defines the promoter regions used in promoter() function. If NA, use default setting in downstream in the function: promoters(x, upstream=2000, downstream=200, ...)
+cov1='0'    # exclusive
+cov2='1'    # exclusive
+#cov1='10e-02'    # exclusive
+#cov2='90e-02'    # exclusive
+#pSigCTCF='10e-08'
+#ms=80
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_refgen="$path_data/ref_genomes"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="Ttest.$ver.R"
+prog_path2="$binpath"
+
+prog_file3="result2report.$prog_file2"
+prog_path3="$binpath"
+
+#################### inputs ####################
+#infile1="geneId_geneName_ratioOfProInDb_obsNbQtlInDb_obsNbQtlOutDb_totalNbSipSnp_obsRatioQltInDb_obsRatioQltOutDb_expRatioQtlInDb_expRatioQtlOutDb_obsInMinusExpIn.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+#infile1="geneId_geneName_ratioOfProInDb_obsNbQtlInDb_obsNbQtlOutDb_totalNbSipSnp_obsRatioQltInDb_obsRatioQltOutDb_expRatioQtlInDb_expRatioQtlOutDb_obsInMinusExpIn.$pSigCTCF.$ms.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+#inpath1="$outpath/`echo $prog_file2 | awk -F'.' '{print $1}'`/$ver/$pDis1/$pDis2/$pheno/$db/$pSigMeta"
+
+#infile2="ttestValue_ttestPvalue_ttestConf_degreeOfFreedom_tpe.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+#infile2="ttestValue_ttestPvalue_ttestConf_degreeOfFreedom_tpe.$pSigCTCF.$ms.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+#inpath2="$outpath/`echo $prog_file2 | awk -F'.' '{print $1}'`/$ver/$pDis1/$pDis2/$pheno/$db/$pSigMeta"
+
+#################### tmpfiles ####################
+tmpfile2="pheno_db_testvalue_pvalue_ttestConf_degreeOfFreedom_tpe.$oRefseq.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outpath1="$outpath/"`echo $prog_file3 | awk -F'.' '{print $1}'`
+outpath2="$outpath1/"`echo $prog_file3 | awk -F'.' '{print $2}'`
+outpath3="$outpath2/$ver"
+outpath4="$outpath3/$pDis1"
+outpath5="$outpath4/$pDis2"
+outpath6="$outpath5/$pSigMeta"
+
+outfile1="pheno_db_geneId_geneName_ratioOfProInDb_obsNbQtlInDb_obsNbQtlOutDb_totalNbSipSnp_expNbQtlInDb_expNbQtlOutDb.$pSigCTCF.$ms.$oRefseq.$projdate.$psf.csv"
+outfile2="pheno_db_testvalue_pvalue_ttestConf_degreeOfFreedom_tpe_boo.$pSigCTCF.$ms.$pTest.$oRefseq.$projdate.$psf.csv"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $NODEDIR $outpath1 $outpath2 $outpath3 $outpath4 $outpath5 $outpath6)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getOutfile1 {
+    remove_file $outpath6/$outfile1
+    for pheno in ${phenos[@]}; do
+        for db in ${dbs[@]}; do
+            if [[ $db != 'CTCF' ]]; then
+                infile1="intergenicName_ratioOfProInDb_obsNbQtlInDb_obsNbQtlOutDb_totalNbSipSnp_obsRatioQltInDb_obsRatioQltOutDb_expRatioQtlInDb_expRatioQtlOutDb_obsInMinusExpIn.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+            else 
+                infile1="intergenicName_ratioOfProInDb_obsNbQtlInDb_obsNbQtlOutDb_totalNbSipSnp_obsRatioQltInDb_obsRatioQltOutDb_expRatioQtlInDb_expRatioQtlOutDb_obsInMinusExpIn.$pSigCTCF.$ms.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+            fi
+            inpath1="$outpath/`echo $prog_file2 | awk -F'.' '{print $1}'`/$ver/$pDis1/$pDis2/$pheno/$db/$pSigMeta"
+            awk -F',' -v p=$pheno -v d=$db 'BEGIN{OFS=",";} {print p, d, $0}' $inpath1/$infile1 >> $outpath6/$outfile1
+        done
+    done
+}
+
+function getTmpfile2 {
+    remove_file $NODEDIR/$tmpfile2
+    for pheno in ${phenos[@]}; do
+        for db in ${dbs[@]}; do
+            if [[ $db != 'CTCF' ]]; then
+                infile2="ttestValue_ttestPvalue_ttestConf_degreeOfFreedom_tpe.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+            else
+                infile2="ttestValue_ttestPvalue_ttestConf_degreeOfFreedom_tpe.$pSigCTCF.$ms.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+            fi
+            inpath2="$outpath/`echo $prog_file2 | awk -F'.' '{print $1}'`/$ver/$pDis1/$pDis2/$pheno/$db/$pSigMeta"
+            awk -F',' -v p=$pheno -v d=$db 'BEGIN{OFS=",";} {print p, d, $0}' $inpath2/$infile2 >> $NODEDIR/$tmpfile2
+        done
+    done
+}
+
+getOutfile1
+getTmpfile2
+$prog_path1/$prog_file1 $prog_path3/$prog_file3 $NODEDIR/$tmpfile2 $outpath6/$outfile2
+
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                         $PBS_JOBNAME"
+echo "PBS_JOBID:                           $PBS_JOBID"
+echo "Temporary directory to create is:    $NODEDIR"
+echo "Output Directory:                    $outpath6"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

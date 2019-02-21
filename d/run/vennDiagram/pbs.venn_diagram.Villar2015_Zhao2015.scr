@@ -1,0 +1,100 @@
+#!/bin/bash
+
+# Description:
+# This script separates SNPs within H3K27ac and H3K4me3 regions in Villar2015 
+# to get non-overlapping sets.
+# Min Wang, November 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N venn_diagram.Villar2015_Zhao2015
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=30G
+#PBS -l walltime=10:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='d'
+task="GSEA"
+histones=('H3K27Ac' 'H3K4me3')
+tag2='snp';  tag3='gene'; 
+dbs=('Villar2015' 'Zhao2015')
+chews=('tender' 'tough')
+refgen='bosTau'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="venn_diagram.Villar2015_Zhao2015.R"
+
+#################### inputs ####################
+#infile1="chr_pos.$refgen.$histone.${dbs[1]}.$projdate.a.bed"
+#inpath1="$path_pre/analyses/$projdate/a/out/$task/$histone"
+
+#infile2="chr_pos_db_chew.${dbs[2]}.$chew.$tag2.$projdate.$psf.bed"
+inpath2="$outpath/$tag2"
+
+#################### tmpfiles ####################
+tmpfile="snpName_Source.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="`echo $prog_file1 | sed 's/\.R//g'`.$refgen.$projdate.$psf.png"
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile {
+    remove_file $NODEDIR/$tmpfile 
+    for histone in ${histones[@]}; do 
+        infile1="chr_pos.$refgen.$histone.${dbs[0]}.$projdate.a.bed"
+        inpath1="$path_pre/analyses/$projdate/a/out/$task/$histone"
+        awk -F'\t' -v h=$histone -v d=${dbs[0]} 'BEGIN{OFS=","} {print "Chr"$1":"$2, d":"h}' $inpath1/$infile1 >> $NODEDIR/$tmpfile
+    done
+    for chew in ${chews[@]}; do
+        infile2="chr_pos_db_chew.${dbs[1]}.$chew.$tag2.$projdate.$psf.bed"
+        awk -F'\t' -v h=${histones[1]} -v d=${dbs[1]} -v c=$chew 'BEGIN{OFS=","} {print "Chr"$1":"$2, d":"h":"c}' $inpath2/$infile2 >> $NODEDIR/$tmpfile
+    done 
+}
+
+getTmpfile
+Rscript $binpath/$prog_file1 $NODEDIR/$tmpfile $outpath1/$outfile1
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is   $NODEDIR"
+echo "Output directory:                  $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

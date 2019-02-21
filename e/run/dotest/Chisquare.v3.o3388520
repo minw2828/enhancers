@@ -1,0 +1,13 @@
+
+PBS_JOBNAME:                         Chisquare.v3
+PBS_JOBID:                           3388520.mgt.basc.science.depi.vic.gov.au
+Temporary directory to create is:    /tmp/3388520.mgt.basc.science.depi.vic.gov.au
+Output Directory:                    /group/dairy/Min/geno2pheno/analyses/2016-01-19/e/out/dotest/Chisquare/v3/NA/NA/PY/H3K27Ac/10e-08
+
+
+Stats for job 3388520 run on comp116:
+	max memory used = 0.7GB
+	walltime        = 00:07:38
+	total CPU time  = 00:00:05
+Submitted using:
+	qsub -v pheno=PY,db=H3K27Ac,pSigCTCF=10e-05,ms=0 /group/dairy/Min/geno2pheno/analyses/2016-01-19/e/run/dotest/pbs.Chisquare.v3.scr

@@ -1,0 +1,114 @@
+#!/bin/bash
+
+# Description:
+# Min Wang, January 2016
+
+#PBS -S /bin/bash
+#PBS -N GWAS
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=30G
+#PBS -l walltime=100:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='d'
+task="GWAS"
+#gender="cow"
+#pheno="MY"
+#chrN='14'
+tag='enhancer'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_fileA01="genomicRelMatp"
+prog_pathA="/usr/local/bin"
+
+prog_fileB01="filtercolumns.jar"
+prog_fileB02="emmax"
+prog_pathB="$path_software/$prog_fileB02"
+
+#################### inputs ####################
+infile1="$tag.tfam"
+infile2="$tag.ids.txt"
+infile3="$tag.geno.gz" # subset genotype
+infile4="$tag.grm.noRowID.gz"
+inpath1="$path_pre/analyses/$projdate/a/out/$task/$gender"
+
+infile5="$tag.cov"
+inpath5="$path_pre/analyses/$projdate/a/out/$task/$gender"
+
+infile6="$tag.pheno"
+inpath6="$inpath1/$pheno"
+
+infile7="1000BullImputed.filtered.$chrN.txt.gz"
+infile8="enhancer.tped.gz"
+inpath7="$inpath6/$chrN"
+
+#################### tmpfiles ####################
+tmpfile1=$infile1
+tmpfile2=$infile2
+tmpfile3="`echo $infile3 | sed 's/.gz//g'`"
+tmpfile4="`echo $infile4 | sed 's/.gz//g'`"
+tmpfile5=$infile5
+tmpfile6=$infile6
+tmpfile7="`echo $infile7 | sed 's/.gz//g'`"
+tmpfile8="`echo $infile8 | sed 's/.gz//g'`"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outpath1="$outpath/$gender"
+outpath2="$outpath1/$pheno"
+outpath3="$outpath2/$chrN"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### decompress files and move to $NODEDIR ####################
+targets=($inpath1/$infile1 $inpath1/$infile2 $inpath5/$infile5 $inpath6/$infile6)
+for i in ${targets[@]}; do cp $i $NODEDIR/; done 
+
+targets=($inpath1/$infile3 $inpath1/$infile4 $inpath7/$infile7 $inpath7/$infile8)
+for i in ${targets[@]}; do 
+    tmpfile=`echo $i | awk -F'/' '{print $NF}' | sed 's/.gz//g'`
+    zcat -c $i > $NODEDIR/$tmpfile
+done 
+
+#################### analysis ####################
+# run EMMAX #
+$prog_pathB/$prog_fileB02 -Z -v -d 10 -t $NODEDIR/$tag -p $NODEDIR/$tmpfile6 -k $NODEDIR/$tmpfile4 -c $NODEDIR/$tmpfile5 -o $outpath3/chrom$chrN
+
+#################### compress files, copy outfiles back and delete $NODEDIR ####################
+targets=($NODEDIR/$tmpfile5)
+for i in ${targets[@]}; do cp $i $outpath3/ ; done 
+rm -rf $NODEDIR
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is"  $NODEDIR
+echo "Target:                            $outpath3"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

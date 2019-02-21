@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# Description:
+# On 14 September 2017, MG, AC, TPH and MW had a skype call to BH. MG raises 
+# a concern on the permutation test that MW performed on her first paper. 
+# MG's concern was that whether the enrichment signal from H3K4me3 regions 
+# was due to proximity to the upstream of gene, or true enrichment within H3K4me3 
+# regions. To address the concern, MG proposes the following analyses that will be 
+# performed in this folder. 
+# 
+# This script performs a Chi-Square test as MG suggests on 18 September.
+# 
+# Min Wang, 18 September 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [call_pheno]
+# qsub -v [script_name] 
+
+
+#PBS -S /bin/bash
+#PBS -N Chisquare.v5
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=50G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='e'
+task='dotest'
+ver='v5'
+oRefseq='bostau6'
+#pheno='FY'  # Must be in this way
+pSigMeta='10e-08'
+#db='CTCF'
+pDis1='NA'    # a numeric value defines the promoter regions used in promoter() function. If NA, use default setting in upstream in the function: promoters(x, upstream=2000, downstream=200, ...)
+pDis2='NA'    # a numeric value defines the promoter regions used in promoter() function. If NA, use default setting in downstream in the function: promoters(x, upstream=2000, downstream=200, ...)
+cov1='0'    # exclusive
+cov2='1'    # exclusive
+#cov1='10e-02'    # exclusive
+#cov2='90e-02'    # exclusive
+#pSigCTCF='10e-05'
+#ms=0
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_refgen="$path_data/ref_genomes"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="metaAnalysis.$ver.R"
+prog_path2="$binpath"
+
+prog_file3="Chisquare.$ver.R"
+prog_path3="$binpath"
+
+#################### inputs ####################
+if [[ $db != 'CTCF' ]]; then
+    infile1="intergenicName_ratioOfProInDb_nbQltInDb_nbQltOutDb.$pSigMeta.$oRefseq.$projdate.$psf.csv"
+else 
+    infile1="intergenicName_ratioOfProInDb_nbQltInDb_nbQltOutDb.$pSigCTCF.$ms.$pSigMeta.$oRefseq.$projdate.$psf.csv"
+fi 
+inpath1="$path_analyse/out/makeTable/`echo $prog_file2 | awk -F'.' '{print $1}'`/$ver/$pDis1/$pDis2/$pheno/$db"
+
+#################### tmpfiles ####################
+#tmpfile3=".$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outpath1="$outpath/"`echo $prog_file3 | awk -F'.' '{print $1}'`
+outpath2="$outpath1/$ver"
+outpath3="$outpath2/$pDis1"
+outpath4="$outpath3/$pDis2"
+outpath5="$outpath4/$pheno"
+outpath6="$outpath5/$db"
+outpath7="$outpath6/$pSigMeta"
+
+if [[ $db != 'CTCF' ]]; then
+    outfile1="intergenicName_ratioOfProInDb_obsNbQtlInDb_obsNbQtlOutDb_totalNbSipSnp_expNbQtlInDb_expNbQtlOutDb.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+    outfile2="chisqValue_chisqPvalue_degreeOfFreedom_tpe.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+else 
+    outfile1="intergenicName_ratioOfProInDb_obsNbQtlInDb_obsNbQtlOutDb_totalNbSipSnp_expNbQtlInDb_expNbQtlOutDb.$pSigCTCF.$ms.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+    outfile2="chisqValue_chisqPvalue_degreeOfFreedom_tpe.$pSigCTCF.$ms.$cov1.$cov2.$oRefseq.$projdate.$psf.csv"
+fi
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $NODEDIR $outpath1 $outpath2 $outpath3 $outpath4 $outpath5 $outpath6 $outpath7)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+$prog_path1/$prog_file1 $prog_path3/$prog_file3 $inpath1/$infile1 $outpath7/$outfile1 $outpath7/$outfile2 
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                         $PBS_JOBNAME"
+echo "PBS_JOBID:                           $PBS_JOBID"
+echo "Temporary directory to create is:    $NODEDIR"
+echo "Output Directory:                    $outpath7"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

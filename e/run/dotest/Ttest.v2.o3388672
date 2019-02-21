@@ -1,0 +1,13 @@
+
+PBS_JOBNAME:                         Ttest.v2
+PBS_JOBID:                           3388672.mgt.basc.science.depi.vic.gov.au
+Temporary directory to create is:    /tmp/3388672.mgt.basc.science.depi.vic.gov.au
+Output Directory:                    /group/dairy/Min/geno2pheno/analyses/2016-01-19/e/out/dotest/Ttest/v2/NA/NA/FY/CTCF/10e-08
+
+
+Stats for job 3388672 run on comp096:
+	max memory used = 0.7GB
+	walltime        = 00:07:25
+	total CPU time  = 00:00:05
+Submitted using:
+	qsub -v pheno=FY,pSigCTCF=10e-05,ms=0 /group/dairy/Min/geno2pheno/analyses/2016-01-19/e/run/dotest/pbs.Ttest.v2.scr

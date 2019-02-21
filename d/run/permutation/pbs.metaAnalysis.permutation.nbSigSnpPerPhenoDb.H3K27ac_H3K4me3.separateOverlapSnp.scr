@@ -1,0 +1,121 @@
+#!/bin/bash
+
+# Description:
+# This script performs permutation test on meta-analysis results, per phenotype 
+# and per database, but separate H3K27ac and H3K4me3 regions in Villar2015 to test 
+# each histone modification signals separately.
+# Min Wang, November 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N metaAnalysis.permutation.nbSigSnpPerPhenoDb.separateOverlapSnp
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=30G
+#PBS -l walltime=10:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='d'
+task="GSEA"
+histones=('H3K4me3' 'H3K27Ac')
+db='Villar2015'
+refgen='bosTau'
+pSigLevel="10e-08"
+ntimes=10000
+nc=3
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="metaAnalysis.permutation.nbSigSnpPerPhenoDb.H3K27ac_H3K4me3.cal.R"
+prog_file2="metaAnalysis.permutation.nbSigSnpPerPhenoDb.H3K27ac_H3K4me3.plot.R"
+prog_file3="metaAnalysis.permutation.nbSigSnpPerPhenoDb.H3K27ac_H3K4me3.rank.R"
+prog_file4="metaAnalysis.permutation.nbSigSnpPerPhenoDb.H3K27ac_H3K4me3.foldChange.R"
+
+#################### inputs ####################
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+#infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.c.tab"
+inpath2="$path_pre/analyses/$projdate/c/out/$task/metaAnalysis.reengineerBHzScoref90.v2"
+
+#infile3="chr_pos.$refgen.$histone.$db.$projdate.$psf.bed"
+inpath3="$outpath/separateOverlapSnp"
+
+#################### tmpfiles ####################
+tmpfile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$projdate.$psf.tab"
+tmpfile3="snpName_db.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="NbSigSnp_tpe_pheno_db.$refgen.$pSigLevel.$ntimes.$projdate.$psf.csv"  
+outfile2="`echo $prog_file1 | sed 's/.cal.R//g'`.$refgen.$pSigLevel.$ntimes.$nc.$projdate.$psf.png"
+outfile3="pheno_db_rank.$refgen.$pSigLevel.$ntimes.$projdate.$psf.csv"
+outfile4="pheno_db_foldChange.$refgen.$pSigLevel.$ntimes.$projdate.$psf.csv"
+
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.cal\.R//g'`"
+outpath2="$outpath1/`echo $inpath3 | awk -F'/' '{print $NF}'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile2 {
+    remove_file $NODEDIR/$tmpfile2
+    for chrN in `cat $inpath1/$infile1`; do
+        infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.c.tab"
+        cat $inpath2/$infile2 >> $NODEDIR/$tmpfile2
+    done 
+}
+
+function getTmpfile3 {
+    remove_file $NODEDIR/$tmpfile3
+    for histone in ${histones[@]}; do
+        infile3="chr_pos.$refgen.$histone.$db.$projdate.$psf.bed"
+        awk -F'\t' -v d=$db -v h=$histone 'BEGIN{OFS="\t"} {print "Chr"$1":"$2, d":"h}' $inpath3/$infile3 > $NODEDIR/$tmpfile3
+    done 
+}
+
+#getTmpfile2
+#getTmpfile3
+#Rscript $binpath/$prog_file1 $NODEDIR/$tmpfile2 $NODEDIR/$tmpfile3 $outpath2/$outfile1
+Rscript $binpath/$prog_file2 $outpath2/$outfile1 $outpath2/$outfile2
+Rscript $binpath/$prog_file3 $outpath2/$outfile1 $outpath2/$outfile3
+Rscript $binpath/$prog_file4 $outpath2/$outfile1 $outpath2/$outfile4
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is   $NODEDIR"
+echo "Output directory:                  $outpath2"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

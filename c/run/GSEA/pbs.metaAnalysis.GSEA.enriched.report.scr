@@ -1,0 +1,124 @@
+#!/bin/bash
+
+# Description:
+# This script select enriched cases from GSEA.
+# Min Wang, July 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# #fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N metaAnalysis.GSEA.enriched.report
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=2G
+#PBS -l walltime=02:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate="2016-01-19"
+psf='c' # project sub-folder
+task='GSEA'
+phenos=('FY' 'MY' 'PY')
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'Villar_2015')
+tag1='enhancer';  tag2='snp';  tag3='gene'
+sigThreshold='10e-08'
+ntimes=10000
+pLowerNumber='10e-05'
+windowSize=1000
+shiftPos=1
+fdr='10e-03'
+nTrueThreshold=0 # $nTRUE > $nTrueThreshold in the case
+pSig='10e-08'
+
+########## Define paths ##########
+path_pre="/group/dairy/Min/geno2pheno"
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="metaAnalysis.GSEA.enriched.q1.R"
+prog_file2="metaAnalysis.GSEA.enriched.q2.R"
+prog_file3="metaAnalysis.GSEA.enriched.q3.R"
+
+########## inputs ##########
+#infile1="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.Villar_2015.$projdate.$psf.tab"
+inpath1="$outpath/metaAnalysis.GSEA.enriched"                                                                                           # real definition be
+
+#infile3A="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"
+#infile3B="chr_snpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"
+#inpath3="$outpath/metaAnalysis.GSEA/$pheno/$db"
+
+########## outputs ##########
+tmpfile2="chr_lesESnpName_pmeta_pheno.Villar_2015.$projdate.$psf.csv"
+tmpfile3="pheno_db_nbLesESnp_nbESnp_nbSnp.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile2="chr_pheno_count.$pSig.$fdr.$ntimes.$nTrueThreshold.$projdate.$psf.csv"
+outfile3="pheno_db_nbLesESnp_nbESnp_nbSnp_ratioLesESnpPerESnp_ratioLesESnpPerSnp_ratioESnpPerSnp_answerLesESnpPerESnp_answerLesESnpPerSnp_answerESnpPerSnp.$pSig.$fdr.$ntimes.$nTrueThreshold.$projdate.$psf.csv"
+outpath1="$outpath/metaAnalysis.GSEA.enriched"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+########## analysis ##########
+function getTmpfile2 {
+    remove_file $NODEDIR/$tmpfile2
+    for pheno in ${phenos[@]}; do
+        infile1="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.Villar_2015.$projdate.$psf.tab"
+        awk -F'\t' -v p=$pheno 'BEGIN{OFS=",";} {print $1, $2, $6, p}' $inpath1/$infile1 >> $NODEDIR/$tmpfile2
+    done 
+}
+
+#getTmpfile2
+#Rscript $binpath/$prog_file2 $NODEDIR/$tmpfile2 $outpath1/$outfile2
+
+function getTmpfile3 {
+    remove_file $NODEDIR/$tmpfile3
+    for pheno in ${phenos[@]}; do
+        echo $pheno
+        for db in ${dbs[@]}; do
+            echo $db
+            infile3A="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"
+            infile3B="chr_snpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"
+            inpath3="$outpath/metaAnalysis.GSEA/$pheno/$db"
+            a=`wc -l < $inpath3/$infile3A`
+            b=`grep -w TRUE $inpath3/$infile3B | wc -l`
+            c=`wc -l < $inpath3/$infile3B`
+            echo "$pheno,$db,$a,$b,$c" >> $NODEDIR/$tmpfile3
+        done 
+    done
+}
+
+getTmpfile3
+Rscript $binpath/$prog_file3 $NODEDIR/$tmpfile3 $outpath1/$outfile3
+
+########## write to *.o* #file ##########
+echo ""
+echo "PBS_JOBNAME:  $PBS_JOBNAME"
+echo "PBS_JOBID:    $PBS_JOBID"
+echo "Target:       $outpath1/$outfile1"
+echo "              $outpath2/$outfile2"
+echo ""
+
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 
+
+

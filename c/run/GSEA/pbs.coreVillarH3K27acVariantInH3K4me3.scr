@@ -1,0 +1,97 @@
+#!/bin/bash
+
+# Description:
+# This script performs GSEA on meta-analysis results.
+# Min Wang, July 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N coreVillarH3K27acVariantInH3K4me3
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=20G
+#PBS -l walltime=100:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task='GSEA'
+phenos=('FY' 'MY' 'PY')
+db='Villar_2015'
+tag1='enhancer';  tag2='snp';  tag3='gene'
+ntimes=10000
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="coreVillarH3K27acVariantInH3K4me3.R"
+
+#################### inputs ####################
+#infile1="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"
+inpath1="$outpath/metaAnalysis.GSEA.enriched"
+
+infile2="chr_pos.bosTau.H3K4me3.Villar2015.$projdate.a.bed" 
+inpath2="$path_pre/analyses/$projdate/a/out/$task/H3K4me3"
+
+#################### tmpfiles ####################
+tmpfile1="snpName_effect_pvalue_pheno.$projdate.$psf.csv"
+tmpfile2="snpName_histone.$db.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="lesESnpName_histone_countHistone_countAll_ratio_answer.$db.$projdate.$psf.csv"
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile1 {
+    remove_file $NODEDIR/$tmpfile1
+    for pheno in ${phenos[@]}; do 
+        infile1="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_boolenhancer_pHitMiss_accSum.$pheno.$db.$projdate.$psf.tab"
+        awk -F'\t' -v p=$pheno 'BEGIN{OFS=",";} {print $2, $3, $6, p}' $inpath1/$infile1 >> $NODEDIR/$tmpfile1
+    done 
+}
+
+function getTmpfile2 {
+    awk -F'\t' 'BEGIN{OFS=",";} {print "Chr"$1":"$2, "H3K4me3"}' $inpath2/$infile2 >> $NODEDIR/$tmpfile2
+}
+
+getTmpfile1
+getTmpfile2
+Rscript $binpath/$prog_file1 $NODEDIR/$tmpfile1 $NODEDIR/$tmpfile2 $outpath1/$outfile1
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:            $PBS_JOBNAME"
+echo "PBS_JOBID:              $PBS_JOBID"
+echo "Output directory:       $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+

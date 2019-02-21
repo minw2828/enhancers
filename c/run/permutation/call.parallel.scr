@@ -1,0 +1,108 @@
+#!/bin/bash
+
+# Description:
+# Run the same script per file or per record in parallel.
+# Min Wang, April 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.enrichment.scr [script_name] [parallel_index]
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task='permutation'
+parallel_index=$2
+phenos=('FY' 'MY' 'PY')
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'H3K4me3' 'H3K27Ac' 'tender' 'tough')
+chrs=`seq 1 30`
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1=$1
+prog_path1=$runpath
+
+#################### inputs ####################
+
+#################### analysis ####################
+# parallel_index: 01
+function qsub_pheno {
+    for a in ${phenos[@]}; do 
+        qsub -v pheno=$a $prog_path1/$prog_file1
+    done 
+}
+
+# parallel_index: 02
+function qsub_db { 
+    for b in ${dbs[@]}; do 
+        qsub -v db=$b $prog_path1/$prog_file1
+    done 
+}
+
+# parallel_index: 03
+function qsub_chr { 
+    for c in ${chrs[@]}; do 
+        qsub -v chr=$(printf "%02d" $c) $prog_path1/$prog_file1
+    done 
+}
+
+# parallel_index: 04
+function qsub_pheno_db { 
+    for a in ${phenos[@]}; do 
+        for b in ${dbs[@]}; do 
+            qsub -v pheno=$a,db=$b $prog_path1/$prog_file1
+        done
+    done
+}
+
+# parallel_index: 05
+function qsub_pheno_chr { 
+    for a in ${phenos[@]}; do 
+        for c in ${chrs[@]}; do 
+            qsub -v pheno=$a,chr=$(printf "%02d" $c) $prog_path1/$prog_file1
+        done 
+    done 
+}
+
+# parallel_index: 06
+function qsub_db_chr { 
+    for b in ${dbs[@]}; do 
+        for c in ${chrs[@]}; do 
+            qsub -v db=$b,chr=$(printf "%02d" $c) $prog_path1/$prog_file1
+        done 
+    done 
+}
+
+# parallel_index: 07
+function qsub_pheno_db_chr { 
+    for a in ${phenos[@]}; do 
+        for b in ${dbs[@]}; do 
+            for c in ${chrs[@]}; do
+                qsub -v pheno=$a,db=$b,chr=$(printf "%02d" $c) $prog_path1/$prog_file1
+            done 
+        done 
+    done
+}
+
+if   [ $parallel_index -eq 01 ]; then qsub_pheno
+elif [ $parallel_index -eq 02 ]; then qsub_db
+elif [ $parallel_index -eq 03 ]; then qsub_chr
+elif [ $parallel_index -eq 04 ]; then qsub_pheno_db
+elif [ $parallel_index -eq 05 ]; then qsub_pheno_chr
+elif [ $parallel_index -eq 06 ]; then qsub_db_chr
+elif [ $parallel_index -eq 07 ]; then qsub_pheno_db_chr
+fi
+
+
+exit 0
+

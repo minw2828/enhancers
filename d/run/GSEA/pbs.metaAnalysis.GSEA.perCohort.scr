@@ -1,0 +1,111 @@
+#!/bin/bash
+
+# Description:
+# This script performs GSEA on meta-analysis results.
+# Min Wang, November 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N metaAnalysisGsea
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=20G
+#PBS -l walltime=100:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='d'
+task='GSEA'
+#pheno='PY'
+db='Zhao2015'
+#chew='tough'
+tag1='promoter';  tag2='snp';  tag3='gene'
+ntimes=10000
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="metaAnalysis.$task.cal.perCohort.R"
+prog_file2="metaAnalysis.$task.plot.perCohort.R"
+
+#################### inputs ####################
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+#infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.c.tab"
+inpath2="$path_pre/analyses/$projdate/c/out/$task/metaAnalysis.reengineerBHzScoref90.v2"
+
+infile3="chr_pos_db_chew.$db.$chew.$tag2.$projdate.$psf.bed"
+inpath3="$outpath/$tag2"
+
+#################### outputs ####################
+tmpfile2="chrN_snpName_snpeffectmeta_varmeta_zmeta_pmeta.$pheno.$db.$projdate.$psf.csv"
+tmpfile3="snpName_db_chew.$pheno.$db.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile1="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_bool"$tag1"_pHitMiss_accSum.$chew.$pheno.$db.$projdate.$psf.tab"
+outfile2="ES.$chew.$pheno.$db.$ntimes.$projdate.$psf.tab"
+outfile3="chr_lesESnpName_snpeffectmeta_varmeta_zmeta_pmeta_minusLog10Pmeta_bool"$tag1"_pHitMiss_accSum.$chew.$pheno.$db.$projdate.$psf.tab"
+outfile4="esNull.$chew.$pheno.$db.$ntimes.$projdate.$psf.tab"
+outfile5="EsRank.$chew.$pheno.$db.$ntimes.$projdate.$psf.tab"
+outfile6="plot12.$chew.$pheno.$db.$ntimes.$projdate.$psf.png"
+outfile7="plot123456.$chew.$pheno.$db.$ntimes.$projdate.$psf.png"
+outpath1="$outpath/`echo $prog_file1 | sed 's/.cal.perCohort.R//g'`"
+outpath2="$outpath1/$pheno"
+outpath3="$outpath2/$db"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile2 {
+    remove_file $NODEDIR/$tmpfile2
+    for chrN in `cat $inpath1/$infile1`; do 
+        infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.c.tab"
+        chrN=`echo $infile2 | awk -F'.' '{print $2}'`
+        grep -w $pheno $inpath2/$infile2 | awk -F'\t' -v chrN=$chrN 'BEGIN{OFS=",";} {print chrN, $1, $5, $7, $(NF-1), $NF}' >> $NODEDIR/$tmpfile2
+    done 
+}
+
+function getTmpfile3 {
+    awk -F'\t' 'BEGIN{OFS=",";} {print "Chr"$1":"$2, $3, $4}' $inpath3/$infile3 >> $NODEDIR/$tmpfile3
+}
+
+getTmpfile2
+getTmpfile3
+Rscript $binpath/$prog_file1 $NODEDIR/$tmpfile2 $NODEDIR/$tmpfile3 $outpath3/$outfile1 $outpath3/$outfile2 $outpath3/$outfile3 $outpath3/$outfile4 $outpath3/$outfile5
+Rscript $binpath/$prog_file2 $outpath3/$outfile1 $outpath3/$outfile2 $outpath3/$outfile4 $outpath3/$outfile5 $outpath3/$outfile6 $outpath3/$outfile7
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:            $PBS_JOBNAME"
+echo "PBS_JOBID:              $PBS_JOBID"
+echo "Output directory:       $outpath3/$outfile1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+

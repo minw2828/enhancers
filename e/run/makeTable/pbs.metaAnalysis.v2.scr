@@ -1,0 +1,168 @@
+#!/bin/bash
+
+# Description:
+# On 14 September 2017, MG, AC, TPH and MW had a skype call to BH. MG raises 
+# a concern on the permutation test that MW performed on her first paper. 
+# MG's concern was that whether the enrichment signal from H3K4me3 regions 
+# was due to proximity to the upstream of gene, or true enrichment within H3K4me3 
+# regions. To address the concern, MG proposes the following analyses that will be 
+# performed in this folder. 
+# 
+# This script makes a table according to MG's suggestions with the following 
+# columns: 
+# - Column 1: Gene name
+# - Column 2: ratio of the upstream that are covered by this histone mark
+# - Column 3: number of QTLs/eQTLs falling inside that histone mark 
+# - Column 4: number of QTLS/eQTLs falling outside that histone mark
+# All the genes are output from the results, regardless of whether there is any 
+#   GWAS hit inside the gene or not.
+# The QTL/eQTL data that is being tested for enrichment is listed as function name.
+#
+# Note:
+# - It is nature to see one time of the following message:
+#     Warning message:
+#     NAs introduced by coercion
+# 
+# Version 2 is developed from Version 1:
+# - Modify the script from Version 1, to make it work for CTCF binding motifs
+# 
+# Min Wang, September 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+#       max memory used = 0.7GB
+#       walltime        = 00:10:00
+#       total CPU time  = 00:03:12
+#       qsub -v pheno=FY,db=VISTA /group/dairy/Min/geno2pheno/analyses/2016-01-19/e/run/makeTable/pbs.metaAnalysis.v1.scr
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [call_pheno]
+# qsub -v [script_name] 
+
+
+#PBS -S /bin/bash
+#PBS -N metaAnalysis.v2
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=05G
+#PBS -l walltime=05:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='e'
+task='makeTable'
+ver='v2'
+oRefseq='bostau6'
+#pheno='PY'  # Must be in this way
+pSigMeta='10e-08'
+db='CTCF'
+pDis1='NA'    # a numeric value defines the promoter regions used in promoter() function. If NA, use default setting in upstream in the function: promoters(x, upstream=2000, downstream=200, ...)
+pDis2='NA'    # a numeric value defines the promoter regions used in promoter() function. If NA, use default setting in downstream in the function: promoters(x, upstream=2000, downstream=200, ...)
+
+#################### parameters for CTCF ####################
+tag='fimo'
+isf='combined'   # input softwares
+fmt='gff'
+#pSigCTCF='10e-08'
+#ms=80
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_refgen="$path_data/ref_genomes"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="metaAnalysis.$ver.R"
+prog_path2="$binpath"
+
+#################### inputs ####################
+infile1="study_ct_animal_species_SPECIES_iRefseq_refSeq.csv"
+inpath1="$path_data/TAD"
+
+infile2="chroms.txt"
+inpath2="$path_software/emmax"
+
+#infile3="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chr.$projdate.c.tab"
+inpath3="$path_pre/analyses/$projdate/c/out/`echo $prog_file2 | awk -F'.' '{print $1}'`/reengineerBHzScoref90.v2"
+
+infile5="NCBI.refgen.infoTable.umd311.tab"
+inpath5="$path_data/annotation"
+
+infile6="$tag.$fmt"
+inpath6="$path_pre/analyses/2017-01-30/f/out/fimo.commandLine/$isf/$tag"
+
+#################### tmpfiles ####################
+tmpfile3="chr_start_end_pmeta.$projdate.$psf.csv"
+tmpfile6="RefSeq_start_end_strand_motifScore_pvalue_motifId_motifSeq.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outpath1="$outpath/"`echo $prog_file2 | awk -F'.' '{print $1}'`
+outpath2="$outpath1/$ver"
+outpath3="$outpath2/$pDis1"
+outpath4="$outpath3/$pDis2"
+outpath5="$outpath4/$pheno"
+outpath6="$outpath5/$db"
+
+outfile1="geneId_geneName_ratioOfProInDb_nbQltInDb_nbQltOutDb.$pSigCTCF.$ms.$pSigMeta.$oRefseq.$projdate.$psf.csv"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $NODEDIR $outpath1 $outpath2 $outpath3 $outpath4 $outpath5 $outpath6)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile3 { 
+    remove_file $NODEDIR/$tmpfile3
+    for chr in `cat $inpath2/$infile2`; do
+        infile3="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chr.$projdate.c.tab"
+        awk -F'\t' -v p=$pheno 'BEGIN{OFS="\t";} {if ($2 == p) print $1, $NF}' $inpath3/$infile3 | sed 's/^Chr//g' | sed 's/:/\t/g' | sed 's/^30/X/g' | awk -F'\t' 'BEGIN{OFS=",";} {print $1, $2, $2, $3}' >> $NODEDIR/$tmpfile3
+    done 
+} 
+
+function getTmpfile6 {
+    remove_file $NODEDIR/$tmpfile6
+    if [[ $fmt == 'txt' ]]; then
+        tail -n +2 $inpath6/$infile6 | awk -F'\t' 'BEGIN{OFS="\t";} {print $2, $3, $4, $5, $6, $7, $1, toupper($9)}' >> $NODEDIR/$tmpfile6
+    elif [[ $fmt == 'gff' ]]; then
+        tail -n +2 $inpath6/$infile6 | awk -F'\t' 'BEGIN{OFS="\t";} {print $1, $4, $5, $6, $7, $9}' | sed 's/;/\t/g' | sed 's/=/\t/g' | awk -F'\t' 'BEGIN{OFS="\t"} {print $1, $2, $3, $5, $4, $11, $7, toupper($15)}' >> $NODEDIR/$tmpfile6
+    else
+        echo "unknown input format for the following files:"
+        echo $inpath6/$infile6
+    exit 0
+    fi
+}
+
+getTmpfile3
+getTmpfile6
+$prog_path1/$prog_file1 $prog_path2/$prog_file2 $inpath1/$infile1 $NODEDIR/$tmpfile3 $inpath5/$infile5 $NODEDIR/$tmpfile6 $outpath6/$outfile1 
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                         $PBS_JOBNAME"
+echo "PBS_JOBID:                           $PBS_JOBID"
+echo "Temporary directory to create is:    $NODEDIR"
+echo "Output Directory:                    $outpath6"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

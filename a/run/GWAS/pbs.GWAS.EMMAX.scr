@@ -1,0 +1,146 @@
+#!/bin/bash
+
+# Description:
+# Min Wang, January 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N GWAS
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=50G
+#PBS -l walltime=50:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task="GWAS"
+tag='enhancer'
+#gender="bull"
+#pheno="PY"
+#chrN='06'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_fileA01="genomicRelMatp"
+prog_pathA="/usr/local/bin"
+
+prog_fileB01="filtercolumns.jar"
+prog_fileB02="emmax"
+prog_pathB="$path_software/$prog_fileB02"
+
+#################### inputs ####################
+infile1="pheno_idInt_id_sex_FY_MY_PY_EDC_YoB_Breed.txt"
+inpath1="$path_data/phenotype/Iona_20160115"
+
+infile2="800K_597867_full_genos_orderPheno.txt.gz"
+inpath2="$path_data/genotype/Iona_20160120"
+
+infile3="800KplusExtraNZ_597867overlap_Seq04.map"
+inpath3="$path_data/genotype/Iona_20160120"
+
+infile4="genotypes_imp"
+inpath4="/group/dairy/allimputed17112014/fimputeResults/dose"
+
+infile5="MAP_SEQRUN4_4COPIES.txt"
+inpath5="/group/dairy/allimputed17112014/fimputeResults/dose"
+
+#################### tmpfiles ####################
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outpath1="$outpath/$gender"
+outpath2="$outpath1/$pheno"
+outpath3="$outpath2/$chrN"
+
+outfile1="$tag.pheno"
+outfile2="$tag.cov"
+outfile3="$tag.tfam"
+utfile4="$tag.ids.txt"
+outfile5="$tag.geno" # subset genotype
+outfile6="$tag.grm"
+outfile7="1000BullImputed.filtered.$chrN.txt"
+outfile8="$tag.tped"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### decompress files and move to $NODEDIR ####################
+#cp $outpath2/$outfile1 $NODEDIR/$outfile1 
+#cp $outpath1/$outfile2 $NODEDIR/$outfile2
+#cp $outpath1/$outfile3 $NODEDIR/$outfile3
+#cp $outpath1/$outfile4 $NODEDIR/$outfile4
+#cp $outpath1/$outfile6.noRowID.gz $NODEDIR/$outfile6.noRowID.gz
+
+#gunzip -c $NODEDIR/$outfile6.noRowID.gz > $NODEDIR/$outfile6.noRowID
+
+#################### analysis ####################
+# get other EMMAX input files as required #
+#cat $inpath4/$infile4'_'$chrN.dose | /usr/local/bin/java -jar $prog_pathB/$prog_fileB01 1 $NODEDIR/$outfile4 > $NODEDIR/$outfile7
+#gawk '{ if (NR>1) print $0 }' $NODEDIR/$outfile7 > $NODEDIR/temp2
+#gawk -v var=$chrN '{ if ($3==var) print $3, $1, $4, $4 }' $inpath5/$infile5 > $NODEDIR/maphead.txt
+#paste $NODEDIR/maphead.txt $NODEDIR/temp2 > $NODEDIR/$outfile8
+
+#################### decompress files and move to $outpath3 ####################
+cp $outpath2/$outfile1 $outpath3/$outfile1
+cp $outpath1/$outfile2 $outpath3/$outfile2
+cp $outpath1/$outfile3 $outpath3/$outfile3
+cp $outpath1/$outfile4 $outpath3/$outfile4
+cp $outpath1/$outfile6.noRowID.gz $outpath3/$outfile6.noRowID.gz
+
+gunzip -c $outpath3/$outfile6.noRowID.gz > $outpath3/$outfile6.noRowID
+
+# get other EMMAX input files as required #
+cat $inpath4/$infile4'_'$chrN.dose | /usr/local/bin/java -jar $prog_pathB/$prog_fileB01 1 $outpath3/$outfile4 > $outpath3/$outfile7
+gawk '{ if (NR>1) print $0 }' $outpath3/$outfile7 > $outpath3/temp2
+gawk -v var=$chrN '{ if ($3==var) print $3, $1, $4, $4 }' $inpath5/$infile5 > $outpath3/maphead.txt
+paste $outpath3/maphead.txt $outpath3/temp2 > $outpath3/$outfile8
+
+# run EMMAX #
+$prog_pathB/$prog_fileB02 -Z -v -d 10 -t $NODEDIR/$tag -p $NODEDIR/$outfile1 -k $NODEDIR/$outfile6.noRowID -o $NODEDIR/chrom$chrN
+
+#################### compress files, copy outfiles back and delete $NODEDIR ####################
+#gzip -c $NODEDIR/$outfile7 > $outpath3/$outfile7.gz
+#gzip -c $NODEDIR/$outfile8 > $outpath3/$outfile8.gz
+#cp $NODEDIR/chrom$chrN.log $outpath3/
+#cp $NODEDIR/chrom$chrN.ps $outpath3/
+#cp $NODEDIR/chrom$chrN.reml $outpath3/
+#rm -rf $NODEDIR
+
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is"  $NODEDIR
+echo "Output directory:                  $outpath3"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

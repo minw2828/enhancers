@@ -1,0 +1,110 @@
+#!/bin/bash
+
+# Description:
+# This script performs meta-analysis by re-engineering BH's zScore.f90 script.
+# Min Wang, July 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Stats for job 2466753 run on comp105:
+#         max memory used = 3.6GB
+#         walltime        = 00:03:47
+#         total CPU time  = 00:03:08
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N metaAnalysis
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=05G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task="GWAS"
+tag1='enhancer';  tag2='snp';  tag3='gene'
+genders=('bull' 'cow')
+phenos=('FY' 'MY' 'PY')
+chrN=14
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="metaAnalysis.reengineerBHzScoref90.v2.R"
+prog_path1=$binpath
+
+#################### inputs ####################
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+# $inpath2/$infile2 is dependent on gender and pheno
+#infile2="chrom$chrN.ps"
+#inpath2="$outpath/$gender/$pheno/$chrN"            
+
+infile3="pheno_idInt_id_sex_FY_MY_PY_EDC_YoB_Breed.txt"
+inpath3="$path_data/phenotype/Iona_20160115"
+
+#################### outputs ####################
+tmpfile1="gender_pheno_snpName_effect_pvalue.$chrN.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile1="gender_pheno_snpName_effect_pvalue_x_se_weight_weighteffect_meanPheno_sdPheno_minPheno_maxPheno_nAnimal.$chrN.$projdate.$psf.tab"  
+outfile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.$psf.tab"
+outfile3="gender_pheno_nbSnps_source.$chrN.$projdate.$psf.tab"
+outpath1="$outpath/`echo $prog_file1 | sed 's/.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpFile1 {
+    remove_file $NODEDIR/$tmpfile1
+    for gender in ${genders[@]}; do
+        for pheno in ${phenos[@]}; do
+            infile2="chrom$chrN.ps"
+            inpath2="$outpath/$gender/$pheno/$chrN"
+            awk -F'\t' -v gender=$gender -v pheno=$pheno 'BEGIN{OFS=",";} {print gender, pheno, $1, $2, $3}' $inpath2/$infile2 >> $NODEDIR/$tmpfile1
+        done
+    done 
+}
+
+getTmpFile1
+
+Rscript $prog_path1/$prog_file1 $NODEDIR/$tmpfile1 $inpath3/$infile3 $outpath1/$outfile1 $outpath1/$outfile2 $outpath1/$outfile3
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is"  $NODEDIR
+echo "Target:                            $outpath1/$outfile1"
+echo "                                   $outpath1/$outfile2"
+echo "                                   $outpath1/$outfile3"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

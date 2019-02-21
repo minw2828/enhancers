@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# Description:
+# Check $prog_path1/$prog_file1 for description
+# Min Wang, May 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Stats for job 2422227 run on comp105:
+#         max memory used = 32.1GB
+#         walltime        = 04:58:55
+#         total CPU time  = 04:58:13
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N permutation.NbSigSnpPerGenderPhenoDb
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=50G
+#PBS -l walltime=10:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate="2016-01-19"
+psf='d' # project sub-folder
+task='GWAS'
+tag1='enhancer';  tag2='snp';  tag3='gene'
+genders=('bull' 'cow')
+phenos=('FY' 'MY' 'PY')
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'Villar_2015')
+pSigLevel='10e-08'
+ntimes=10000
+nc=6  # the number of columns in the final plot layout
+
+########## Define paths ##########
+path_pre="/group/dairy/Min/geno2pheno"
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="permutation.NbSigSnpPerGenderPhenoDb.cal.R"
+prog_file2="permutation.NbSigSnpPerGenderPhenoDb.plot.R"
+prog_file3="permutation.NbSigSnpPerGenderPhenoDb.rank.R"
+prog_file4="permutation.nbSigSnpPerPhenoDb.foldChange.R"
+
+########## inputs ##########
+#infile1="finalise.$db.$tag2.tab"
+inpath1="$path_pre/analyses/$projdate/a/out/GSEA/$tag2"
+
+infile2="chroms.txt"
+inpath2="$path_software/emmax"
+
+#infile3="chrom$chrN.ps"                    # real definition below 
+#inpath3="$outpath/$gender/$pheno/$chrN"    # real definition below 
+
+########## tmpfiles ##########
+tmpfile1="gender_pheno_snpName_effect_pvalue.$pSigLevel.$projdate.$psf.tab"
+tmpfile2="snpName_db.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+########## outputs ##########
+outfile1="NbSigSnp_tpe_gender_pheno_db.$pSigLevel.$ntimes.$projdate.$psf.csv"
+outfile2="`echo $prog_file1 | sed 's/\.cal.R//g'`.$pSigLevel.$ntimes.$nc.$projdate.$psf.png"
+outfile3="pheno_db_gender_rank.$pSigLevel.$ntimes.$projdate.$psf.csv"
+outfile4="gender_pheno_db_foldChange.$pSigLevel.$ntimes.$projdate.$psf.csv"
+
+outpath1="$outpath/`echo $prog_file1 | sed 's/\.cal.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+########## analysis ##########
+function getTmpfile {
+    targets=($NODEDIR/$tmpfile1 $NODEDIR/$tmpfile2)
+    for i in ${targets[@]}; do remove_file $i; done 
+    for gender in ${genders[@]}; do
+        for pheno in ${phenos[@]}; do
+            for chrN in `cat $inpath2/$infile2`; do 
+                infile3="chrom$chrN.ps"
+                inpath3="$outpath/$gender/$pheno/$chrN"
+                awk -F'\t' -v gender=$gender -v pheno=$pheno 'BEGIN{OFS="\t";} {print gender, pheno, $1, $2, $3}' $inpath3/$infile3 >> $NODEDIR/$tmpfile1
+            done 
+        done 
+    done
+    for db in ${dbs[@]}; do
+        infile1="finalise.$db.$tag2.tab"
+        tail -n +2 $inpath1/$infile1 | awk -F'\t' 'BEGIN{OFS="\t";} {print "Chr"$1":"$2, $3}' >> $NODEDIR/$tmpfile2
+    done 
+}
+
+#getTmpfile
+#Rscript $binpath/$prog_file1 $NODEDIR/$tmpfile1 $NODEDIR/$tmpfile2 $outpath1/$outfile1
+#Rscript $binpath/$prog_file2 $outpath1/$outfile1 $outpath1/$outfile2
+#Rscript $binpath/$prog_file3 $outpath1/$outfile1 $outpath1/$outfile3
+Rscript $binpath/$prog_file4 $outpath1/$outfile1 $outpath1/$outfile4
+
+########## write to *.o* #file ##########
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is   $NODEDIR"
+echo "Target:                            $outpath1"
+echo ""
+
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

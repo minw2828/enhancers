@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# Description:
+# This script calculates the Enrichment Score using effects.
+#
+# Gene set enrichment analysis (GSEA)
+# Reference: 
+#     http://www.pnas.org/content/102/43/15545.full
+# 
+# Min Wang, March 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# #fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N GSEA_LD_sigSNPs
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=3G
+#PBS -l walltime=10:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate="2016-01-19"
+psf='a' # project sub-folder
+task='GSEA'
+tag1='enhancer';  tag2='snp'
+gender='cow'
+pheno='MY'
+chrN=14
+db='Villar2015'
+pThresholdGWAS=0.00000001 # 10e-08
+pearsonFDR=0.01
+
+########## Define paths ##########
+path_pre="/group/dairy/Min/geno2pheno"
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="$task.LD_SNPs.py"
+prog_path1=$binpath
+
+prog_file2="$task.LD_sigSNPs.plot.R"
+prog_path2=$binpath
+
+########## inputs ##########
+infile1="output.snpName_effect_pvalue_absEffectSorted_boolenhancer_pHitMiss_accSum.$gender.$pheno.$chrN.$db.$projdate.$psf.tab"
+inpath1="$outpath/$gender/$pheno/$chrN/$db"
+
+infile2="enhancer.tped.gz"
+inpath2="$path_pre/analyses/$projdate/a/out/GWAS/$gender/$pheno/$chrN"
+
+########## outputs ##########
+outfile1="sigSnpName.tab"
+outfile2="sigSnp1000BGR4Genotypes.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile3="output.sigSnpA_sigSnpB_pearsonRcorrelation_pvalue.$gender.$pheno.$chrN.$db.$pThresholdGWAS.$projdate.$psf.tab"
+outfile4="output.sigSnpA_sigSnpB_pearsonRcorrelation_pvalue.$gender.$pheno.$chrN.$db.$pThresholdGWAS.$pearsonFDR.$projdate.$psf.png"
+outpath1=$inpath1
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+########## analysis ##########
+
+#################### inputs ####################
+awk -F'\t' -v pt=$pThresholdGWAS '{if($3 <= pt) print $1}' $inpath1/$infile1 > $NODEDIR/$outfile1
+zcat $inpath2/$infile2 | awk 'NR == FNR { a[$0]; next } $2 in a' $NODEDIR/$outfile1 - | cut -d ' ' -f 2,5- > $NODEDIR/$outfile2
+python $prog_path1/$prog_file1 $NODEDIR/$outfile2 $outpath1/$outfile3
+Rscript $prog_path2/$prog_file2 $inpath1/$infile1 $outpath1/$outfile3 $outpath1/$outfile4 
+
+########## write to *.o* #file ##########
+echo    ""
+echo    "PBS_JOBNAME:  $PBS_JOBNAME"
+echo    "PBS_JOBID:    $PBS_JOBID"
+echo    "Target:       $outpath1/$outfile3"
+echo    "              $outpath1/$outfile4"
+echo    ""
+
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

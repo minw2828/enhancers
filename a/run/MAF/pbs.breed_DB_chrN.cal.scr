@@ -1,0 +1,122 @@
+#!/bin/bash
+
+# Description:
+# Min Wang, April 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N MAF_cal
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=40G
+#PBS -l walltime=03:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task='GWAS'
+stask='MAF'
+#breed='jer'
+#chrN='01'
+#db='VISTA'
+tag1='enhancer';    tag2='snp'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="filtercolumns.jar"
+prog_path1="$path_software/emmax"
+
+prog_file2="$stask.calculation.py"
+prog_path2=$binpath
+
+prog_file3="python"
+prog_path3="$path_software/$prog_file3/Python-3.5.1"
+
+#################### inputs ####################
+infile1="pheno_idInt_id_sex_FY_MY_PY_EDC_YoB_Breed.txt"
+inpath1="$path_data/phenotype/Iona_20160115"
+
+infile2="genotypes_imp"
+inpath2="/group/dairy/allimputed17112014/fimputeResults/dose"
+
+infile3="MAP_SEQRUN4_4COPIES.txt"
+inpath3="/group/dairy/allimputed17112014/fimputeResults/dose"
+
+infile4A="finalise.$db.$tag2.tab"
+inpath4="$path_analyse/out/GSEA/$tag2"
+
+infile5="chroms.txt"
+inpath5="$path_software/emmax"
+
+#################### outputs ####################
+outpath1="$outpath/$stask"
+outpath2="$outpath1/$breed"
+outpath3=$outpath2/$db
+
+outfile4A01="$breed.$infile1"
+outfile4B01="1000BullImputed.filtered.$chrN.genotypes.noAnimalId.$breed.$projdate.$psf.txt"
+outfile4B02="1000BullImputed.filtered.$chrN.snpids.$breed.$projdate.$psf.txt"
+outfile4C01=$tag2"id_freqAllele0_freqAllele1_freqAlleleMinor_freqGeno0_freqGeno1_freqGeno2_$tag1.$chrN.$breed.$db.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+outpath4="$outpath3/$chrN"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3 $outpath4)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### decompress files and move to $NODEDIR ####################
+
+#################### analysis ####################
+# separate IM's animals by Breeds #
+grep -i $breed $inpath1/$infile1 | awk '{print $1}' > $NODEDIR/$outfile4A01
+
+# filter my animals from 1000 Bull Genome Run4 data #
+## checked on 07 April 2016; for chrN in 01 ... 30, animal orders in $inpath4/$infile4A'_'$chrN.dose are the same. ##
+## rows are SNPs & columns are animals & get rid of animal IDs ##
+cat $inpath2/$infile2'_'$chrN.dose | /usr/local/bin/java -jar $prog_path1/$prog_file1 1 $NODEDIR/$outfile4A01 | awk '{ if (NR>1) print $0 }' > $NODEDIR/$outfile4B01
+
+## get snp ids ##
+gawk -v var=$chrN '{ if ($3==var) print $1}' $inpath3/$infile3 > $NODEDIR/$outfile4B02
+
+## calculate AF, i.e. sum rows ##
+$prog_path3/$prog_file3 $prog_path2/$prog_file2 $NODEDIR/$outfile4B01 $NODEDIR/$outfile4B02 $inpath4/$infile4A $NODEDIR/$outfile4C01
+
+#################### copy results back to working directory ####################
+targets=($NODEDIR/$outfile4C01)
+for i in ${targets[@]}; do cp $i $outpath4/; done 
+rm -rf $NODEDIR
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Target:                            $outpath4/$outfile4C01"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

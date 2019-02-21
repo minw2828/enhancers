@@ -1,0 +1,141 @@
+#!/bin/bash
+
+# Description:
+# This script select enriched cases from GSEA.
+# Min Wang, May 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# #fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N GSEA
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=2G
+#PBS -l walltime=02:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate="2016-01-19"
+psf='c' # project sub-folder
+task='GSEA'
+genders=('bull' 'cow')
+phenos=('FY' 'MY' 'PY')
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'Villar_2015')
+tag1='enhancer';  tag2='snp';  tag3='gene'
+sigThreshold='10e-08'
+ntimes=10000
+pLowerNumber='10e-05'
+windowSize=1000
+shiftPos=1
+fdr=0.01
+nTrueThreshold=0 # $nTRUE > $nTrueThreshold in the case
+
+########## Define paths ##########
+path_pre="/group/dairy/Min/geno2pheno"
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_file1="$task.select2report.R"
+prog_path1=$binpath
+
+########## inputs ##########
+infile1="chroms.txt"
+inpath1="$path_software/emmax"
+
+#infile2="rankES.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"                                                             # real definition below 
+#infile3="snpName_effect_pvalue_variance_boolenhancer_pHitMiss_accSum.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"        # ...
+#infile4="lesESnpName_effect_pvalue_variance_boolenhancer_pHitMiss_accSum.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"    # ...
+#infile5="runningSum_esNullES_variance_rankVariance_effectVariance.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.png"           # ...
+#infile6="NbLesESnps_NbSnpsBeforeES_NbSnpPerCase.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"                             # ...
+#inpath2="$outpath/$gender/$pheno/$chrN/$db"                                                                                      # real definition below
+
+########## outputs ##########
+outfile1=$task"allES.gender_pheno_chrN_db_rankES_noSignRankES.sorted.$ntimes.$projdate.$psf.csv"
+outfile2=$task"fdrES.gender_pheno_chrN_db_rankES.sorted.$fdr.$ntimes.$projdate.$psf.csv"
+outfile3=$task"enriched.gender_pheno_chrN_db.$nTrueThreshold.$fdr.$ntimes.$projdate.$psf.csv"
+outpath1="$outpath/enriched"
+outpath2="$outpath1/caseByCase"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($outpath1 $outpath2)
+for i in ${targets[@]}; do make_dir $i; done
+
+targets=($outpath1/$outpathA)
+for i in ${targets[@]}; do remove_file $i; done
+
+########## analysis ##########
+## sort 720 cases by ES ##
+for gender in ${genders[@]}; do
+    for pheno in ${phenos[@]}; do
+        for chrN in `cat $inpath1/$infile1`; do
+            for db in ${dbs[@]}; do
+                infile2="rankES.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"
+                inpath2="$outpath/$gender/$pheno/$chrN/$db"
+                awk -v gender=$gender -v pheno=$pheno -v chrN=$chrN -v db=$db 'BEGIN{OFS=",";} {print gender, pheno, chrN, db, $0, $0}' $inpath2/$infile2 | sed 's/<//2'
+            done
+        done
+    done
+done | sort -t',' -g -k6 > $outpath1/$outfile1
+
+## select cases where ES > threshold ##
+Rscript $prog_path1/$prog_file1 $outpath1/$outfile1 $outpath1/$outfile2 $fdr
+
+## generate table for report ##
+echo "Gender,Phenotype,Chromosome,Database,ES rank,NbLesESnps,NbSnpsBeforeES,NbSnpPerCase" > $outpath1/$outfile3
+## select to report ##
+SAVEIFS=$IFS;
+IFS=',';
+while read line; do
+    set -- $line;
+    gender=$1
+    pheno=$2
+    chrN=`echo $3 | awk '{ printf("%02d", $1) }'`
+    db=$4
+    infile3="snpName_effect_pvalue_variance_boolenhancer_pHitMiss_accSum.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"
+    inpath2="$outpath/$gender/$pheno/$chrN/$db"
+    nTRUE=`grep -i true $inpath2/$infile3`
+    if [ $nTRUE > $nTrueThreshold ]; then
+        infile2="rankES.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"
+        inpath2="$outpath/$gender/$pheno/$chrN/$db"  
+        infile6="NbLesESnps_NbSnpsBeforeES_NbSnpPerCase.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"
+        m=`sed 's/\t/,/g' $inpath2/$infile6`
+        awk -v gender=$gender -v pheno=$pheno -v chrN=$chrN -v db=$db -v n=$n -v m=$m 'BEGIN{OFS=",";} {print gender,pheno,chrN,db,$0,m}' $inpath2/$infile2 >> $NODEDIR/tmp.$outfile3
+        infile4="lesESnpName_effect_pvalue_variance_boolenhancer_pHitMiss_accSum.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"
+        infile5="runningSum_esNullES_variance_rankVariance_effectVariance.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.png"
+        targets=($inpath2/$infile5 $inpath2/$infile4)
+        outpath3="$outpath2/$gender.$pheno.$chrN.$db"; make_dir $outpath3
+        for i in ${targets[@]}; do cp $i $outpath3/; done
+    fi
+done < $outpath1/$outfile2
+IFS=$SAVEIFS;
+sort -k1 $NODEDIR/tmp.$outfile3 >> $outpath1/$outfile3
+
+########## write to *.o* #file ##########
+echo    ""
+echo    "PBS_JOBNAME:  $PBS_JOBNAME"
+echo    "PBS_JOBID:    $PBS_JOBID"
+echo    ""
+
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 
+
+

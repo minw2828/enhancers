@@ -1,0 +1,95 @@
+#!/bin/bash
+
+# Description:
+# Run the same script per file or per record in parallel.
+# Min Wang, July 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Stats for job 2431429 run on comp114:
+#         max memory used = 2GB
+#         walltime        = 00:05:10
+#         total CPU time  = 00:05:05
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N Manhattan
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=05G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task='GSEA'
+tag1='enhancer'; tag2='snp'; tag3='gene'
+logBase=10
+nc=2 # the first column is for annotating subplot index 
+subPlotIndex='d'
+chrN=20
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Manhattan.chrN.allCohorts.R"
+prog_path1=$binpath
+
+#################### inputs ####################
+infile2="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.$psf.tab"
+inpath2="$outpath/metaAnalysis.reengineerBHzScoref90.v2"
+
+#################### outputs ####################
+tmpfile2="chr_pos_pheno_pmeta.$chrN.$projdate.$psf.tab"
+NODEDIR=/tmp/$PBS_JOBID
+
+outfile1="output.$chrN.$logBase.$nc.$subPlotIndex.$projdate.$psf.png"
+outpath1="$outpath/`echo $prog_file1 | sed 's/.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+#################### analysis ####################
+function getTmpfiles {
+    if [ -f $NODEDIR/$tmpfile2 ]; then rm $NODEDIR/$tmpfile2; fi
+    awk -F'\t' 'BEGIN{OFS="\t";} {print $1, $2, $NF}' $inpath2/$infile2 | sed 's/Chr//g' | sed 's/:/\t/g' >> $NODEDIR/$tmpfile2
+}
+
+getTmpfiles
+
+Rscript $prog_path1/$prog_file1 $NODEDIR/$tmpfile2 $outpath1/$outfile1
+
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:  $PBS_JOBNAME"
+echo "PBS_JOBID:    $PBS_JOBID"
+echo "Target:       $outpath1/$outfile1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+
+

@@ -1,0 +1,103 @@
+#!/bin/bash
+
+# Description:
+# Check if any hit has been found in BLAST search.
+# Min Wang, November 2015
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.all-mammal.scr [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N CheckDistance.bioconductor
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=05G
+#PBS -l walltime=05:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate='2016-01-19'
+psf='a'
+task='TFBS'
+folder='GCF_000003055.6_Bos_taurus_UMD_3.1.1'
+evalue='4e-17'
+elens=(1 10000 30000)    # 10Kb, 30Kb, 1Mb
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'H3K4me3' 'H3K27Ac')
+
+########## Define paths ##########
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_refgen="$path_data/ref_genomes"
+path_software="$path_pre/software"
+path_R324="$path_software/R/R-revised/bin"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## programs ##########
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="CheckDistance.bioconductor.R"
+prog_path2=$binpath
+
+########## inputs ##########
+#infile1="chr_start_end.$db.$oRefgen.$projdate.$psf.csv"
+inpath1="$path_analyse/out//reduce.bioconductor"
+
+########## tmpfiles ##########
+tmpfile1="chr_start_end_db.$projdate.$psf.csv"
+tmpfile2="elen.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+########## outputs ##########
+outfile1="db_nrv_nrlv_mergeDis_ratio2.$folder.$projdate.$psf.csv"
+outpath1="$outpath/`echo $prog_file2 | awk -F'.' '{print $1}'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+########## analysis ##########
+function getTmpfile1 {
+    remove_file $NODEDIR/$tmpfile1
+    for db in ${dbs[@]}; do
+        infile1="chr_start_end.$db.$oRefgen.$projdate.$psf.csv"
+        awk -F',' -v db=$db 'BEGIN{OFS=",";} {print $1, $2, $3, toupper(db)}' $infile1 | sed 's/^chr//g' | sed 's/^Chr//g' >> $NODEDIR/$tmpfile1
+    done
+}
+
+function getTmpfile2 {
+    remove_file $NODEDIR/$tmpfile2
+    for elen in ${elens[@]}; do
+        echo $elen >> $NODEDIR/$tmpfile2
+    done 
+}
+
+getTmpfile1
+getTmpfile2
+$prog_path1/$prog_file1 $prog_path2/$prog_file2 $NODEDIR/$tmpfile1 $NODEDIR/$tmpfile2 $outpath1/$outfile1
+
+########## write to *.o* #file ##########
+echo ""
+echo "PBS_JOBNAME:  $PBS_JOBNAME"
+echo "PBS_JOBID:    $PBS_JOBID"
+echo "Target:       $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+

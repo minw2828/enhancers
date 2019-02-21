@@ -1,0 +1,114 @@
+#!/bin/bash
+
+# Description:
+# On 14 September 2017, MG, AC, TPH and MW had a skype call to BH. After the 
+# meeting, TPH requests MW to perform the permutation test using MG's sliding 
+# method, in replacement of the random selection permutation method that was 
+# used in the paper.
+# Min Wang, 15 September 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N nbSigSnpPerPhenoDb.plot_rank_foldChange.v2
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=30G
+#PBS -l walltime=10:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task="permutation"
+ver='v2'
+oRefseq='bostau6'
+pSigLevel="10e-08"
+ntimes=10000
+phenos=('FY' 'MY' 'PY')
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'H3K4me3' 'H3K27Ac' 'tender' 'tough')
+chrs=`seq 1 30`
+Width=1200
+Height=960
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="nbSigSnpPerPhenoDb.cal.$ver.R"
+prog_path2=$binpath
+
+prog_file3="nbSigSnpPerPhenoDb.plot_rank_foldChange.$ver.R"
+prog_path3=$binpath
+
+#################### inputs ####################
+infile1="nbSnp.$pSigLevel.$ntimes.$oRefseq.$projdate.$psf.csv"
+#inpath1="$outpath/`echo $prog_file2 | awk -F'.' 'BEGIN{OFS="/"; }{print $1, $2}'`/$ver/$pheno/$db/$chr"
+
+#################### tmpfiles ####################
+tmpfile1="nbSnp_pheno_db_chr.$ntimes.$oRefseq.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outpath1="$outpath/`echo $prog_file3 | awk -F'.' '{print $1}'`"
+outpath2="$outpath1/`echo $prog_file3 | awk -F'.' '{print $2}'`"
+outpath3="$outpath2/$ver"
+
+outfile1="`echo $prog_file3 | awk -F'.' '{print $1}'`.$Width.$Height.$pSigLevel.$ntimes.$oRefseq.$projdate.$psf.png"
+outfile2="pheno_db_rank_foldChange.$pSigLevel.$ntimes.$oRefseq.$projdate.$psf.csv"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile1 {
+    remove_file $NODEDIR/$tmpfile1
+    for pheno in ${phenos[@]}; do
+        for db in ${dbs[@]}; do
+            for c in ${chrs[@]}; do
+                chr=$(printf "%02d" $c)
+                inpath1="$outpath/`echo $prog_file2 | awk -F'.' 'BEGIN{OFS="/"; }{print $1, $2}'`/$ver/$pheno/$db/$chr"
+                awk -F',' -v pheno=$pheno -v db=$db -v chr=$chr 'BEGIN{OFS=",";} {print $1, pheno, db, chr}' $inpath1/$infile1 >> $NODEDIR/$tmpfile1
+            done 
+        done
+    done
+}
+
+getTmpfile1
+$prog_path1/$prog_file1 $prog_path3/$prog_file3 $NODEDIR/$tmpfile1 $outpath3/$outfile1 $outpath3/$outfile2
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is   $NODEDIR"
+echo "Output directory:                  $outpath3"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

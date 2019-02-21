@@ -1,0 +1,147 @@
+#!/bin/bash
+
+# Description:
+# Finalised bovine putatiev enhancers with the clarificaiton of input data source
+# and methods.
+# Min Wang, Jan 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N venn_diagram
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=5G
+#PBS -l walltime=5:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+########## parameters ##########
+projdate='2016-01-19'
+psf='a' # project sub-folder
+task='GSEA'
+stask='venn_diagram'
+db1='VISTA';         db2='FANTOM5';         db3='dbSUPER';         db4='Villar2015'
+method1='BLASTn';    method2='LiftOver';    method3='H3K27ac'
+evalue1='4e-84';     evalue2='4e-17'
+tag1='enhancer';     tag2='snp'
+folder='GCF_000003055.6_Bos_taurus_UMD_3.1.1'
+
+########## Define paths ##########
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+########## program files ##########
+prog_fileB1="$stask.$tag1.R"
+prog_fileB2="$stask.$tag2.R"
+prog_path1=$binpath
+
+########## inputs ##########
+infile1="output.table_stats.csv"
+inpath1="$path_pre/analyses/2015-11-24/b/out/report/$folder" # $db1, $method1, $evalue2
+
+infile2="output.table_stats.csv"
+inpath2="$path_pre/analyses/2015-10-27/e/out/report"         # $db2, $method1, $evalue2
+
+infile3="output.table_stats.csv"
+inpath3="$path_pre/analyses/2015-10-28/c/out/report/$folder" # $db3, $method1, $evalue2
+
+infile41="vista.hg19ToBosTau6.over.chain.bed"
+infile42="vista.mm9ToBosTau6.over.chain.bed"
+inpath4="$path_pre/analyses/2016-02-29/a/out/$method2"       # $db1, $method2
+
+infile51="fantom5.hg19ToBosTau6.over.chain.bed"
+infile52="fantom5.mm9ToBosTau6.over.chain.bed"
+inpath5="$path_pre/analyses/2016-02-29/a/out/$method2"       # $db2, $method2
+
+infile61="dbSUPER.hg19ToBosTau6.over.chain.bed"
+infile62="dbSUPER.mm9ToBosTau6.over.chain.bed"
+inpath6="$path_pre/analyses/2016-02-29/a/out/$method2"       # $db3, $method2
+
+infile7="bosTau-H3K27Ac_replicated-peaks_macs"
+inpath7="$path_data/$db4"                                    # $db4, $method3
+
+infile8="MAP_SEQRUN4_4COPIES.txt"
+inpath8="/group/dairy/allimputed17112014/fimputeResults/dose"   # BH's 1000 Bull Genome Run4 Imputed
+
+########## outputs ##########
+outfile1="$db1.$method1($evalue2).$tag1.csv"
+outfile2="$db2.$method1($evalue2).$tag1.csv"
+outfile3="$db3.$method1($evalue2).$tag1.csv"
+outfile4="$db1.$method2.$tag1.csv"
+outfile5="$db2.$method2.$tag1.csv"
+outfile6="$db3.$method2.$tag1.csv"
+outfile7="$db4.$method3.$tag1.csv"
+
+outfileA01="mergeAll.$db1.$tag1.csv"
+outfileA02="mergeAll.$db2.$tag1.csv"
+outfileA03="mergeAll.$db3.$tag1.csv"
+outfileA04="mergeAll.$db4.$tag1.csv"
+outfileA05="mergeAll.$tag1.csv"
+
+outfileA06="finalise.$db1.$tag1.bed"
+outfileA07="finalise.$db2.$tag1.bed"
+outfileA08="finalise.$db3.$tag1.bed"
+outfileA09="finalise.$db4.$tag1.bed"
+outfileA10="finalise.$tag1.bed"
+outpath1="$outpath/$tag1"
+
+outfileD01="mergeAll.$db1.$tag2.tab"
+outfileD02="mergeAll.$db2.$tag2.tab"
+outfileD03="mergeAll.$db3.$tag2.tab"
+outfileD04="mergeAll.$db4.$tag2.tab"
+outfileD05="mergeAll.$tag2.tab"
+
+outfileD06="finalise.$db1.$tag2.tab"
+outfileD07="finalise.$db2.$tag2.tab"
+outfileD08="finalise.$db3.$tag2.tab"
+outfileD09="finalise.$db4.$tag2.tab"
+outfileD10="finalise.$tag2.tab"
+outpath2="$outpath/$tag2"
+
+outfileB01="output.$stask.$tag1.$projdate.$psf.png"
+outfileB02="output.$stask.$tag2.$projdate.$psf.png"
+outpath3="$outpath/$stask"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+########## safe guard ##########
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3)
+for i in ${targets[@]}; do make_dir $i; done
+
+########## analysis ##########
+# get Venn Diagram for putative enhancers # 
+Rscript $prog_path1/$prog_fileB1 $projdate $psf $outpath1/$outfileA05 $outpath3/$outfileB01
+
+# get Venn Diagram for snps in putative enhancers #
+Rscript $prog_path1/$prog_fileB2 $projdate $psf $outpath2/$outfileD05 $outpath3/$outfileB02
+
+
+########## write to *.o* #file ##########
+echo    ""
+echo    "PBS_JOBNAME:  $PBS_JOBNAME"
+echo    "PBS_JOBID:    $PBS_JOBID"
+echo    "Target:       $outpath3/$outfileB01"
+echo    "Target:       $outpath3/$outfileB02"
+echo    ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+
+exit 0
+
+
+

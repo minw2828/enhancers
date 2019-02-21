@@ -1,0 +1,99 @@
+#!/bin/bash
+
+# Description:
+# This script calculates the mapping rate of UCSC Liftover outputs.
+# 
+# UCSC Liftover Documentation:
+# http://www.geneticlegacies.com/2012/01/basic-guide-to-ucsc-liftover-command.html
+#
+# Min Wang, October 2016
+
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N seqInfo.bioconductor
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=05G
+#PBS -l walltime=05:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task='TFBS'
+folder='GCF_000003055.6_Bos_taurus_UMD_3.1.1'
+evalue='4e-17'
+dbs=('VISTA' 'FANTOM5' 'dbSUPER' 'H3K27Ac' 'H3K4me3')
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="seqInfo.bioconductor.R"
+prog_path2=$binpath
+
+#################### inputs ####################
+#infile1="chr_start_end.$db.$oRefgen.$projdate.$psf.csv"
+inpath1="$path_analyse/out/reduce.bioconductor"
+
+#################### tmpfiles ####################
+tmpfile1="chr_start_end_db.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="db_nb_s_Min_1stQu_Median_Mean_3rdQu_Max.$projdate.$psf.csv"
+outpath1="$outpath/`echo $prog_file2 | awk -F'.' 'BEGIN{OFS=".";} {print $1, $2}'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+#################### analysis ####################
+function getTmpfile1 {
+    remove_file $NODEDIR/$tmpfile1
+    for db in ${dbs[@]}; do
+        infile1="chr_start_end.$db.$oRefgen.$projdate.$psf.csv"
+        awk -F',' -v db=$db 'BEGIN{OFS=",";} {print $1, $2, $3, db}' $inpath1/$infile1 >> $NODEDIR/$tmpfile1
+    done 
+}
+
+getTmpfile1
+$prog_path1/$prog_file1 $prog_path2/$prog_file2 $NODEDIR/$tmpfile1 $outpath1/$outfile1
+
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is   $NODEDIR"
+echo "Output directory:                  $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+

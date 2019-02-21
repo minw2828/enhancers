@@ -1,0 +1,147 @@
+#!/bin/bash
+
+# Description:
+# Run the same script per file or per record in parallel.
+# Min Wang, Jan 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# qsub [script_name]
+
+
+#PBS -S /bin/bash
+#PBS -N Manhattan.geneNamePerCohort.colorStripByGeneEnhancer
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@ecodev.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task='GSEA'
+tag1='enhancer'; tag2='snp'; tag3='gene'
+folder="GCF_000003055.6_Bos_taurus_UMD_3.1.1"
+dbs=("VISTA" "FANTOM5" "dbSUPER" "H3K4me3" "H3K27Ac")
+#dbs=("H3K4me3" "H3K27Ac")
+logBase=10
+width=19200
+height=3900
+nc=2 # the first column is for annotating subplot index 
+#pheno='FY'
+#geneName='MGST1'
+pheno="MY"
+geneName='GC'
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_refgen="$path_data/ref_genomes/ftp.ncbi.nlm.nih.gov/genomes/all"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Manhattan.geneNamePerCohort.colorStripByGeneEnhancer.R"
+prog_path1=$binpath
+
+#################### inputs ####################
+infile1=$folder"_genomic.gff.gz"
+inpath1="$path_refgen/$folder"
+
+infile2="NCBI.refgen.infoTable.umd311.tab"
+inpath2="$path_data/annotation"
+
+#infile3="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.$psf.tab"
+inpath3="$outpath/metaAnalysis.reengineerBHzScoref90.v2"
+
+#infile4="finalise.$db.$tag1.bed"
+inpath4="$path_pre/analyses/$projdate/a/out/GSEA/$tag1"
+
+#infile5="chr_start_end.bosTau.$db.Villar2015.$projdate.a.bed"
+#inpath5="$path_pre/analyses/$projdate/a/out/GSEA/$db"
+
+#################### tmpfiles ####################
+tmpfile1="chr_start_end_geneName.$projdate.$psf.tab"
+tmpfile3="snpName_pos_pheno_pmeta.$projdate.$psf.csv"
+tmpfile4="chr_start_end_db.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile1="output.$geneName.$logBase.$width.$height.$nc.$projdate.$psf.png"
+outpath1="$outpath/`echo $prog_file1 | sed 's/.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($outpath1)
+for i in ${targets[@]}; do make_dir $i; done
+
+#################### analysis ####################
+function getTmpfile1 {
+    zcat -c $inpath1/$infile1 | grep "=$geneName;" | awk -F'\t' 'BEGIN{OFS="\t";} {print $1, $4, $5}' | sort -n -k2,3 > $NODEDIR/$tmpfile1.temp 
+    refseq=`awk -F'\t' '{print $1}' $NODEDIR/$tmpfile1.temp | uniq`
+    grep $refseq $inpath2/$infile2 | awk -F'\t' '{print $3}'  > $NODEDIR/$tmpfile1.chr
+    awk -F'\t' '{print $2}' $NODEDIR/$tmpfile1.temp | head -1 > $NODEDIR/$tmpfile1.start
+    awk -F'\t' '{print $3}' $NODEDIR/$tmpfile1.temp | tail -1 > $NODEDIR/$tmpfile1.end
+    echo $geneName > $NODEDIR/$tmpfile1.geneName
+    paste -d'\t' $NODEDIR/$tmpfile1.chr $NODEDIR/$tmpfile1.start $NODEDIR/$tmpfile1.end $NODEDIR/$tmpfile1.geneName > $NODEDIR/$tmpfile1
+}
+
+function getTmpfile3 () {
+    chrN=`awk -F'\t' '{print $1}' $1`
+    infile3="snpName_pheno_weighteffect_weight_snpeffectmeta_npops_varmeta_zmeta_pmeta.$chrN.$projdate.$psf.tab"
+    chr=`echo $chrN | sed 's/^0*//g'`
+    grep -w $pheno $inpath3/$infile3 | awk -F'\t' 'BEGIN{OFS=",";} {print $1, $1, $2, $9}' | sed "s/Chr$chr://2" > $NODEDIR/$tmpfile3
+}
+
+function getTmpfile4 () {
+    remove_file $NODEDIR/$tmpfile4
+    chrN=`awk -F'\t' '{print $1}' $1`
+    for db in ${dbs[@]}; do
+        infile4="finalise.$db.$tag1.bed"
+        infile5="chr_start_end.bosTau.$db.Villar2015.$projdate.a.bed"
+        inpath5="$path_pre/analyses/$projdate/a/out/GSEA/$db"
+        if [ -f $inpath4/$infile4 ]; then
+            infile=$inpath4/$infile4
+            tail -n +2 $infile | awk -F'\t' -v chrN=$chrN 'BEGIN{OFS=",";} {if($1 == int(chrN)) print $1, $2, $3, $4}' >> $NODEDIR/$tmpfile4
+        elif [ -f $inpath5/$infile5 ]; then
+            infile=$inpath5/$infile5
+            chr="chr`echo $chrN | sed 's/^0*//g'`"
+            grep $chr $infile | awk -F'\t' -v db=$db 'BEGIN{OFS=",";} {print $1, $2, $3, db}' | sed 's/chr//g' >> $NODEDIR/$tmpfile4
+        else
+            echo "The following input files do not exist:"
+            echo "$inpath4/$infile4"
+            echo "$inpath5/$infile5"
+        fi
+    done
+}
+
+getTmpfile1
+getTmpfile3 $NODEDIR/$tmpfile1
+getTmpfile4 $NODEDIR/$tmpfile1
+Rscript $prog_path1/$prog_file1 $NODEDIR/$tmpfile1 $NODEDIR/$tmpfile3 $NODEDIR/$tmpfile4 $outpath1/$outfile1
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:  $PBS_JOBNAME"
+echo "PBS_JOBID:    $PBS_JOBID"
+echo "Target:       $outpath1/$outfile1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+
+

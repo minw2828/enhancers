@@ -1,0 +1,126 @@
+#!/bin/bash
+
+# Description:
+# This script calculates allele frequencies on each gender,pheno,chrN,db.
+# Min Wang, May 2016
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N GSEA
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=1G
+#PBS -l walltime=01:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='c'
+task='GSEA'
+#gender='bull'
+#pheno='FY'
+#chrN='14'
+#db='Villar_2015'
+tag1='enhancer';  tag2='snp';  tag3='gene'
+ntimes=10000
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="python"
+prog_path1="$path_software/$prog_file1/Python-3.5.1"
+
+prog_file2="MAF.cal.py"
+prog_file3="varSnpEffect.cal.R"
+prog_file4="$task.cal.R"
+prog_file5="$task.plot.R"
+prog_path2=$binpath
+
+#################### inputs ####################
+infile1="$tag1.tped.gz"
+inpath1="$path_pre/analyses/$projdate/a/out/GWAS/$gender/$pheno/$chrN"
+
+infile2="chrom$chrN.ps"
+inpath2="$path_pre/analyses/$projdate/a/out/GWAS/$gender/$pheno/$chrN"
+
+infile3="finalise.$db.$tag2.tab" # Gene sets, i.e. All Enhancer SNPs
+inpath3="$path_pre/analyses/$projdate/a/out/$task/$tag2"
+
+#################### outputs ####################
+outpath1="$outpath/$gender"
+outpath2="$outpath1/$pheno"
+outpath3="$outpath2/$chrN"
+
+outfileA="snpName_freqAllele0_freqAllele1_freqAlleleMinor_freqGeno0_freqGeno1_freqGeno2.$gender.$pheno.$chrN.$db.$projdate.$psf.tab"
+outfileB="snpName_effect_pvalue_variance.$gender.$pheno.$chrN.$db.$projdate.$psf.tab"
+outfileC01="snpName_effect_pvalue_variance_boolenhancer_pHitMiss_accSum.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"
+outfileC02="esNull.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"
+outfileC03="lesESnpName_effect_pvalue_variance_boolenhancer_pHitMiss_accSum.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"
+outfileC04="rankES.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"
+outfileC05="runningSum_esNullES.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.png"
+outfileC06="runningSum_esNullES_variance_rankVariance_effectVariance_pHitMiss_lesRunningSum_lesPHitMiss.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.png"
+outfileC07="NbLesESnps_NbSnpsBeforeES_NbSnpPerCase.$gender.$pheno.$chrN.$db.$ntimes.$projdate.$psf.tab"
+outpath4="$outpath3/$db"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1 $outpath2 $outpath3 $outpath4)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### decompress files and move to $NODEDIR ####################
+
+#################### analysis ####################
+#zcat $inpath1/$infile1 | cut -d' ' -f2  > $NODEDIR/id
+#zcat $inpath1/$infile1 | cut -d' ' -f5- > $NODEDIR/genotype
+
+## calculate AF, i.e. sum rows ##
+#$prog_path1/$prog_file1 $prog_path2/$prog_file2 $NODEDIR/genotype $NODEDIR/id $outpath4/$outfileA
+
+## calculate variance of SNP effect ##
+#Rscript $prog_path2/$prog_file3 $inpath2/$infile2 $outpath4/$outfileA $outpath4/$outfileB
+
+## calculate GSEA on variance ##
+#Rscript $prog_path2/$prog_file4 $outpath4/$outfileB $inpath3/$infile3 $outpath4/$outfileC01 $outpath4/$outfileC02 $outpath4/$outfileC03 $outpath4/$outfileC04
+
+## plot GSEA results ##
+Rscript $prog_path2/$prog_file5 $outpath4/$outfileC01 $outpath4/$outfileC02 $outpath4/$outfileC04 $outpath4/$outfileC05 $outpath4/$outfileC06 $outpath4/$outfileC07
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:   $PBS_JOBNAME"
+echo "PBS_JOBID:     $PBS_JOBID"
+echo "Target:        $outpath4/$outfileA"
+echo "               $outpath4/$outfileB"
+echo "               $outpath4/$outfileC01"
+echo "               $outpath4/$outfileC02"
+echo "               $outpath4/$outfileC03"
+echo "               $outpath4/$outfileC04"
+echo "               $outpath4/$outfileC05"
+echo "               $outpath4/$outfileC06"
+echo "               $outpath4/$outfileC07"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+

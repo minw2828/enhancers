@@ -1,0 +1,98 @@
+#!/bin/bash
+
+# Description:
+# This script 
+# Min Wang, Jan 2017
+
+# Requirement:
+# You will need to adjust parameters under [program], [input] and [output] to 
+# fit your case.
+
+# Execution:
+# sh call.make_all_infiles.scr [script_name] [parallel_index]
+
+
+#PBS -S /bin/bash
+#PBS -N nbSigSnpPerPhenoDb.H3K27ac_H3K4me3.combined_separated_overlapped
+#PBS -l nodes=1:ppn=1
+#PBS -l mem=30G
+#PBS -l walltime=10:00:00
+#PBS -M min.wang@depi.vic.gov.au
+#PBS -m abe
+#PBS -A dbioanim1
+#PBS -V
+#PBS -q batch
+
+
+#################### parameters ####################
+projdate='2016-01-19'
+psf='a'
+task="permutation"
+refgen='bosTau'
+pSigLevel="10e-08"
+ntimes=10000
+nc=3
+
+#################### Define paths ####################
+path_pre='/group/dairy/Min/geno2pheno'
+path_analyse="$path_pre/analyses/$projdate/$psf"
+path_data="$path_pre/data"
+path_software="$path_pre/software"
+binpath="$path_analyse/bin/$task"; runpath="$path_analyse/run/$task"; outpath="$path_analyse/out/$task"
+
+#################### program files ####################
+prog_file1="Rscript"
+prog_path1="$path_software/R/R-revised/bin"
+
+prog_file2="nbSigSnpPerPhenoDb.H3K27ac_H3K4me3.combined_separated_overlapped.R"
+prog_path2=$binpath
+
+#################### inputs ####################
+infile1="NbSigSnp_tpe_pheno_db.bosTau.$pSigLevel.$ntimes.$projdate.a.csv"
+inpath1="$outpath/nbSigSnpPerPhenoDb.H3K27ac_H3K4me3/combined"
+
+infile3="NbSigSnp_tpe_pheno_db.bosTau.$pSigLevel.$ntimes.$projdate.a.csv"
+inpath3="$outpath/nbSigSnpPerPhenoDb.H3K27ac_H3K4me3/separateOverlapSnp"
+
+infile4="NbSigSnp_tpe_pheno_db.bosTau.$pSigLevel.$ntimes.$projdate.a.csv"
+inpath4="$outpath/nbSigSnpPerPhenoDb.H3K27ac_H3K4me3/overlapped"
+
+#################### tmpfiles ####################
+tmpfile2="NbSigSnp_tpe_pheno_db_laps.$projdate.$psf.csv"
+NODEDIR=/tmp/$PBS_JOBID
+
+#################### outputs ####################
+outfile2="`echo $prog_file2 | sed 's/\.R//g'`.3.$pSigLevel.$ntimes.$nc.$projdate.$psf.png"
+outpath1="$outpath/`echo $prog_file2 | sed 's/\.R//g'`"
+
+#################### functions ####################
+source $runpath/functions.sh
+
+#################### safe guard ####################
+targets=($binpath $runpath $outpath $outpath1)
+for i in ${targets[@]}; do make_dir $i; done 
+
+#################### analysis ####################
+function getTmpfile2 {
+    awk -F',' 'BEGIN{OFS=","} {print $1, $2, $3, $4, "All"}' $inpath1/$infile1 | sed 's/Villar2015://g' >  $NODEDIR/$tmpfile2
+    awk -F',' 'BEGIN{OFS=","} {print $1, $2, $3, $4, "specific"}' $inpath3/$infile3 | sed 's/Villar2015://g' >> $NODEDIR/$tmpfile2
+    awk -F',' 'BEGIN{OFS=","} {print $1, $2, $3, $4, ""}' $inpath4/$infile4 | sed 's/Villar2015_//g' >> $NODEDIR/$tmpfile2
+}
+
+getTmpfile2
+$prog_path1/$prog_file1 $prog_path2/$prog_file1 $NODEDIR/$tmpfile2 $outpath1/$outfile2
+
+#################### write to *.o* file ####################
+echo ""
+echo "PBS_JOBNAME:                       $PBS_JOBNAME"
+echo "PBS_JOBID:                         $PBS_JOBID"
+echo "Temporary directory to create is   $NODEDIR"
+echo "Output directory:                  $outpath1"
+echo ""
+
+/usr/local/bin/showJobStats.scr  $PBS_JOBID
+
+exit 0
+
+
+
